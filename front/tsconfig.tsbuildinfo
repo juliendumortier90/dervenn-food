@@ -1,1 +1,0 @@
-{"root":["./vite.config.ts","./src/App.tsx","./src/api.ts","./src/main.tsx","./src/theme.ts","./src/types.ts","./src/screens/BarScreen.tsx","./src/screens/CuisineScreen.tsx","./src/screens/DisplayScreen.tsx"],"errors":true,"version":"5.9.3"}
