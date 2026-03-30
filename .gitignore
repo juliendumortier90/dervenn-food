@@ -1,0 +1,11 @@
+node_modules/
+dist/
+cdk.out/
+.DS_Store
+.env
+.env.local
+coverage/
+*.log
+front/dist/
+back/dist/
+iac/dist/

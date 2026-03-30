@@ -1,0 +1,21 @@
+{
+  "name": "dervennfood",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "front",
+    "back",
+    "iac"
+  ],
+  "scripts": {
+    "build": "npm run build -w back && npm run build -w front && npm run build -w iac",
+    "deploy": "npm run build && npm run cdk:deploy",
+    "build:back": "npm run build -w back",
+    "build:front": "npm run build -w front",
+    "build:iac": "npm run build -w iac",
+    "lint": "npm run lint -w front && npm run lint -w back && npm run lint -w iac",
+    "cdk:synth": "npm run cdk:synth -w iac",
+    "cdk:deploy": "npm run cdk:deploy -w iac",
+    "cdk:diff": "npm run cdk:diff -w iac"
+  }
+}
