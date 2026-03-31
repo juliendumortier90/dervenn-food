@@ -1,0 +1,29 @@
+meta {
+  name: Mettre a jour le statut
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{api_url}}/commandes?action=update-status
+  body: json
+  auth: basic
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:basic {
+  username: {{basic_auth_username}}
+  password: {{basic_auth_password}}
+}
+
+body:json {
+  {
+    "action": "update-status",
+    "commandeNumber": {{commande_number}},
+    "status": "{{status}}"
+  }
+}

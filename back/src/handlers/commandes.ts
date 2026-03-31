@@ -1,11 +1,22 @@
 import { APIGatewayProxyHandler } from "aws-lambda";
-import { createCommande, deleteCommande, listCommandes, updateCommandeStatus } from "../services/repository";
+import {
+  createCommande,
+  deleteCommande,
+  listCommandes,
+  listReadyCommandes,
+  updateCommandeStatus
+} from "../services/repository";
 import { jsonResponse } from "../services/http";
 import { parseBaseType, parseCommandeNumber, parseComment, parseStatus } from "../services/validation";
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
     if (event.httpMethod === "GET") {
+      if (event.resource === "/commandes/pretes" || event.path.endsWith("/commandes/pretes")) {
+        const commandes = await listReadyCommandes();
+        return jsonResponse(200, { commandes });
+      }
+
       const commandes = await listCommandes();
       return jsonResponse(200, { commandes });
     }

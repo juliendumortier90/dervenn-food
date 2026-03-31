@@ -1,0 +1,20 @@
+meta {
+  name: Lister les commandes
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{api_url}}/commandes
+  body: none
+  auth: basic
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:basic {
+  username: {{basic_auth_username}}
+  password: {{basic_auth_password}}
+}

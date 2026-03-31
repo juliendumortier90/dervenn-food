@@ -87,6 +87,12 @@ export class DervennFoodStack extends Stack {
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });
 
+    const commandesPretesResource = commandesResource.addResource("pretes");
+    commandesPretesResource.addMethod("GET", new apigateway.LambdaIntegration(commandesFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
     const websiteBucket = new s3.Bucket(this, "FrontWebsiteBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,

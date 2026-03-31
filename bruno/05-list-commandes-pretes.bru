@@ -1,0 +1,20 @@
+meta {
+  name: Lister les commandes pretes
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{api_url}}/commandes/pretes
+  body: none
+  auth: basic
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:basic {
+  username: {{basic_auth_username}}
+  password: {{basic_auth_password}}
+}

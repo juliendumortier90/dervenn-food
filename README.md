@@ -52,6 +52,25 @@ Fichier d'exemple front:
 copy front\\.env.example front\\.env
 ```
 
+## Collection Bruno
+
+Une collection Bruno est disponible dans `bruno/`.
+
+1. Copier `bruno/.env.example` vers `bruno/.env`
+2. Renseigner `FESTIVAL_API_URL`, `FESTIVAL_BASIC_AUTH_USERNAME` et `FESTIVAL_BASIC_AUTH_PASSWORD`
+3. Ouvrir le dossier `bruno/` dans Bruno
+4. Selectionner l'environnement `local`
+
+Variables utiles:
+
+- `FESTIVAL_BASE_TYPE`: `TOMATE` ou `CREME_FRAICHE`
+- `FESTIVAL_STATUS`: `A_FAIRE`, `EN_COURS`, `PRETE`, `DELIVREE`
+- `FESTIVAL_COMMANDE_NUMBER`: numero de commande cible pour les requetes POST
+
+Requete Arduino utile:
+
+- `GET /commandes/pretes`: retourne au maximum 2 commandes avec le statut `PRETE`, triees par `readyAt` croissant puis par `commandeNumber` croissant
+
 ## Variables d'infrastructure
 
 Le stack CDK attend ces variables d'environnement:
@@ -87,6 +106,7 @@ Le stack publie aussi un fichier `runtime-config.json` dans le bucket du front, 
 - La numerotation des commandes est incrementale et commence a `1`
 - Le front demande l'identifiant et le mot de passe Basic Auth a l'ouverture
 - L'API metier passe par une seule lambda qui route en interne selon la methode HTTP et `action`
+- L'endpoint `GET /commandes/pretes` est prevu pour un afficheur Arduino WiFi qui veut recuperer les 2 prochaines pizzas pretes
 - L'API est protegee par un authorizer Lambda qui valide l'en-tete `Authorization`
 - Le front est servi par S3 + CloudFront
 

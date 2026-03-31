@@ -51,6 +51,25 @@ export async function listCommandes(): Promise<Commande[]> {
   return (response.Items ?? []).map(toCommande);
 }
 
+export async function listReadyCommandes(limit = 2): Promise<Commande[]> {
+  const commandes = await listCommandes();
+
+  return commandes
+    .filter((commande) => commande.status === CommandeStatus.PRETE)
+    .sort((left, right) => {
+      const leftReadyAt = left.readyAt ?? left.updatedAt;
+      const rightReadyAt = right.readyAt ?? right.updatedAt;
+      const readyAtComparison = leftReadyAt.localeCompare(rightReadyAt);
+
+      if (readyAtComparison !== 0) {
+        return readyAtComparison;
+      }
+
+      return left.commandeNumber - right.commandeNumber;
+    })
+    .slice(0, limit);
+}
+
 export async function createCommande(input: CreateCommandeInput): Promise<Commande> {
   const now = new Date().toISOString();
   const item: Commande = {
