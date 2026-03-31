@@ -5,10 +5,13 @@ import {
 } from "aws-lambda";
 
 const expectedUsername = process.env.BASIC_AUTH_USERNAME;
-const expectedPassword = process.env.BASIC_AUTH_PASSWORD;
+const expectedFoodPassword = process.env.FOOD_BASIC_AUTH_PASSWORD;
+const expectedBikePassword = process.env.BIKE_BASIC_AUTH_PASSWORD;
 
-if (!expectedUsername || !expectedPassword) {
-  throw new Error("Missing BASIC_AUTH_USERNAME or BASIC_AUTH_PASSWORD");
+if (!expectedUsername || !expectedFoodPassword || !expectedBikePassword) {
+  throw new Error(
+    "Missing BASIC_AUTH_USERNAME, FOOD_BASIC_AUTH_PASSWORD or BIKE_BASIC_AUTH_PASSWORD"
+  );
 }
 
 function generatePolicy(principalId: string, effect: "Allow" | "Deny", resource: string): APIGatewayAuthorizerResult {
@@ -49,13 +52,38 @@ function decodeAuthorizationHeader(headerValue?: string): { username: string; pa
   };
 }
 
+function extractPath(event: APIGatewayRequestAuthorizerEvent): string {
+  if (event.path) {
+    return event.path;
+  }
+
+  const arnParts = event.methodArn.split("/");
+  const resourcePath = arnParts.slice(3).join("/");
+
+  return resourcePath ? `/${resourcePath}` : "/";
+}
+
+function expectedPasswordForPath(path: string): string | null {
+  if (path.startsWith("/bike")) {
+    return expectedBikePassword ?? null;
+  }
+
+  if (path.startsWith("/commandes")) {
+    return expectedFoodPassword ?? null;
+  }
+
+  return null;
+}
+
 export const handler: APIGatewayRequestAuthorizerHandler = async (
   event: APIGatewayRequestAuthorizerEvent
 ) => {
   const credentials = decodeAuthorizationHeader(event.headers?.Authorization ?? event.headers?.authorization);
+  const expectedPassword = expectedPasswordForPath(extractPath(event));
 
   if (
     credentials &&
+    expectedPassword &&
     credentials.username === expectedUsername &&
     credentials.password === expectedPassword
   ) {

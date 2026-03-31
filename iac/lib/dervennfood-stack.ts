@@ -15,23 +15,39 @@ export class DervennFoodStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const basicAuthUsername = process.env.FESTIVAL_BASIC_AUTH_USERNAME;
-    const basicAuthPassword = process.env.FESTIVAL_BASIC_AUTH_PASSWORD;
-    const allowedOrigin = process.env.FESTIVAL_ALLOWED_ORIGIN ?? "*";
+    const basicAuthUsername = process.env.DERVENN_BASIC_AUTH_USERNAME;
+    const foodBasicAuthPassword = process.env.DERVENN_FOOD_BASIC_AUTH_PASSWORD;
+    const bikeBasicAuthPassword = process.env.DERVENN_BIKE_BASIC_AUTH_PASSWORD;
+    const allowedOrigin = process.env.DERVENN_ALLOWED_ORIGIN ?? "*";
 
-    if (!basicAuthUsername || !basicAuthPassword) {
-      throw new Error("FESTIVAL_BASIC_AUTH_USERNAME and FESTIVAL_BASIC_AUTH_PASSWORD are required");
+    if (!basicAuthUsername || !foodBasicAuthPassword || !bikeBasicAuthPassword) {
+      throw new Error(
+        "DERVENN_BASIC_AUTH_USERNAME, DERVENN_FOOD_BASIC_AUTH_PASSWORD and DERVENN_BIKE_BASIC_AUTH_PASSWORD are required"
+      );
     }
 
-    const table = new dynamodb.Table(this, "CommandesTable", {
+    const commandesTable = new dynamodb.Table(this, "CommandesTable", {
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY
     });
 
-    const lambdaEnvironment = {
-      TABLE_NAME: table.tableName,
+    const bikeTable = new dynamodb.Table(this, "DervennBikeTable", {
+      tableName: "dervenn-bike",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
+    const foodLambdaEnvironment = {
+      TABLE_NAME: commandesTable.tableName,
+      ALLOWED_ORIGIN: allowedOrigin
+    };
+
+    const bikeLambdaEnvironment = {
+      BIKE_TABLE_NAME: bikeTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
     };
 
@@ -48,7 +64,13 @@ export class DervennFoodStack extends Stack {
     const commandesFunction = new lambdaNodejs.NodejsFunction(this, "CommandesFunction", {
       ...lambdaDefaults,
       entry: path.join(__dirname, "../../back/src/handlers/commandes.ts"),
-      environment: lambdaEnvironment
+      environment: foodLambdaEnvironment
+    });
+
+    const bikeCounterFunction = new lambdaNodejs.NodejsFunction(this, "BikeCounterFunction", {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, "../../back/src/handlers/bikeCounter.ts"),
+      environment: bikeLambdaEnvironment
     });
 
     const basicAuthAuthorizer = new lambdaNodejs.NodejsFunction(this, "BasicAuthAuthorizerFunction", {
@@ -56,14 +78,16 @@ export class DervennFoodStack extends Stack {
       entry: path.join(__dirname, "../../back/src/handlers/basicAuthAuthorizer.ts"),
       environment: {
         BASIC_AUTH_USERNAME: basicAuthUsername,
-        BASIC_AUTH_PASSWORD: basicAuthPassword
+        FOOD_BASIC_AUTH_PASSWORD: foodBasicAuthPassword,
+        BIKE_BASIC_AUTH_PASSWORD: bikeBasicAuthPassword
       }
     });
 
-    table.grantReadWriteData(commandesFunction);
+    commandesTable.grantReadWriteData(commandesFunction);
+    bikeTable.grantReadWriteData(bikeCounterFunction);
 
-    const api = new apigateway.RestApi(this, "FestivalApi", {
-      restApiName: "Dervenn Food API",
+    const api = new apigateway.RestApi(this, "DervennApi", {
+      restApiName: "Dervenn API",
       defaultCorsPreflightOptions: {
         allowOrigins: [allowedOrigin],
         allowHeaders: ["Content-Type", "Authorization"],
@@ -71,7 +95,7 @@ export class DervennFoodStack extends Stack {
       }
     });
 
-    const authorizer = new apigateway.RequestAuthorizer(this, "FestivalBasicAuthAuthorizer", {
+    const authorizer = new apigateway.RequestAuthorizer(this, "DervennBasicAuthAuthorizer", {
       handler: basicAuthAuthorizer,
       identitySources: [apigateway.IdentitySource.header("Authorization")],
       resultsCacheTtl: Duration.seconds(0)
@@ -89,6 +113,19 @@ export class DervennFoodStack extends Stack {
 
     const commandesPretesResource = commandesResource.addResource("pretes");
     commandesPretesResource.addMethod("GET", new apigateway.LambdaIntegration(commandesFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const bikeResource = api.root.addResource("bike");
+    const bikeCounterResource = bikeResource.addResource("counter");
+    bikeCounterResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const bikeStatsResource = bikeResource.addResource("stats");
+    bikeStatsResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });

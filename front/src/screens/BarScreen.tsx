@@ -19,7 +19,7 @@ import { useState } from "react";
 import { addCommande, deleteCommande } from "../api";
 import { Commande } from "../types";
 
-interface BarScreenProps {
+interface CommandeScreenProps {
   commandes: Commande[];
   onCommandeUpdated: (commande: Commande) => void;
   onCommandeDeleted: (commandeNumber: number) => void;
@@ -32,12 +32,12 @@ function normalizeCommandeNumber(value: string): number {
   return Number(value.trim());
 }
 
-export function BarScreen({
+export function CommandeScreen({
   commandes,
   onCommandeUpdated,
   onCommandeDeleted,
   error
-}: BarScreenProps) {
+}: CommandeScreenProps) {
   const [commandeNumber, setCommandeNumber] = useState("");
   const [comment, setComment] = useState("");
   const [pendingDeleteNumber, setPendingDeleteNumber] = useState<number | null>(null);
@@ -161,7 +161,7 @@ export function BarScreen({
                 <Box>
                   <Typography variant="h4">Nouvelle commande</Typography>
                   <Typography color="text.secondary">
-                    Le numero est saisi au bar puis envoye en cuisine apres confirmation.
+                    Le numero est saisi au poste commande puis envoye en cuisine apres confirmation.
                   </Typography>
                 </Box>
                 {error ? <Alert severity="error">{error}</Alert> : null}

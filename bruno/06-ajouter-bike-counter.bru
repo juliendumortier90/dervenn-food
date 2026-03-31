@@ -1,11 +1,11 @@
 meta {
-  name: Lister les commandes
+  name: Ajouter un passage bike
   type: http
-  seq: 1
+  seq: 6
 }
 
-get {
-  url: {{api_url}}/commandes
+post {
+  url: {{api_url}}/bike/counter
   body: none
   auth: basic
 }
@@ -16,5 +16,5 @@ headers {
 
 auth:basic {
   username: {{dervenn_basic_auth_username}}
-  password: {{food_basic_auth_password}}
+  password: {{bike_basic_auth_password}}
 }

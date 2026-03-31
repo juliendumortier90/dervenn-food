@@ -1,7 +1,7 @@
-import { BaseType, Commande, CommandeStatus } from "./types";
+import { AppService, BaseType, BikeCounterStats, Commande, CommandeStatus } from "./types";
 
-const storageKey = "festival-basic-auth";
-const screenModeKey = "festival-screen-mode";
+const storageKey = "dervenn-basic-auth";
+const serviceKey = "dervenn-service";
 let runtimeApiBaseUrl = "";
 
 export async function loadRuntimeConfig(): Promise<void> {
@@ -29,22 +29,20 @@ export function saveCredentials(username: string, password: string): void {
 
 export function clearCredentials(): void {
   window.sessionStorage.removeItem(storageKey);
-  window.sessionStorage.removeItem(screenModeKey);
+  window.sessionStorage.removeItem(serviceKey);
 }
 
 export function hasCredentials(): boolean {
   return Boolean(window.sessionStorage.getItem(storageKey));
 }
 
-export type ScreenMode = "bar" | "cuisine";
-
-export function saveScreenMode(mode: ScreenMode): void {
-  window.sessionStorage.setItem(screenModeKey, mode);
+export function saveSelectedService(service: AppService): void {
+  window.sessionStorage.setItem(serviceKey, service);
 }
 
-export function getScreenMode(): ScreenMode | null {
-  const value = window.sessionStorage.getItem(screenModeKey);
-  return value === "bar" || value === "cuisine" ? value : null;
+export function getSelectedService(): AppService | null {
+  const value = window.sessionStorage.getItem(serviceKey);
+  return value === "food-commande" || value === "food-cuisine" || value === "bike-counter" ? value : null;
 }
 
 function getAuthorizationHeader(): string {
@@ -124,4 +122,15 @@ export async function deleteCommande(commandeNumber: number): Promise<Commande> 
     body: JSON.stringify({ action: "delete", commandeNumber })
   });
   return data.commande;
+}
+
+export async function getBikeCounterStats(): Promise<BikeCounterStats> {
+  const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/stats");
+  return data.stats;
+}
+
+export async function createBikeCounterEntry(): Promise<void> {
+  await apiFetch("/bike/counter", {
+    method: "POST"
+  });
 }
