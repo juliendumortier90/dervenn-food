@@ -10,10 +10,11 @@ import {
   Typography
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   clearCredentials,
   getApiBaseUrl,
+  getBikeCounterHistory,
   getBikeCounterStats,
   getCommandes,
   getSelectedService,
@@ -23,10 +24,11 @@ import {
   saveSelectedService
 } from "./api";
 import { BikeCounterScreen } from "./screens/BikeCounterScreen";
+import { BikeCounterAnalyticsScreen } from "./screens/BikeCounterAnalyticsScreen";
 import { CommandeScreen } from "./screens/BarScreen";
 import { CuisineScreen } from "./screens/CuisineScreen";
 import { LoginScreen } from "./screens/LoginScreen";
-import { AppService, Commande } from "./types";
+import { AppService, BikeCounterHistory, BikeCounterStats, BikeHistoryRange, Commande } from "./types";
 
 function useFoodPolling(
   enabled: boolean,
@@ -97,31 +99,39 @@ function useFoodPolling(
 
 function useBikeStatsPolling(
   enabled: boolean,
+  historyEnabled: boolean,
   onAuthenticationInvalid: () => void
 ): {
   error: string;
-  replaceTotalCount: (value: number) => void;
-  totalCount: number;
+  history: BikeCounterHistory | null;
+  isHistoryLoading: boolean;
+  replaceStats: (value: BikeCounterStats) => void;
+  selectedRange: BikeHistoryRange;
+  setSelectedRange: (value: BikeHistoryRange) => void;
+  stats: BikeCounterStats;
 } {
-  const [totalCount, setTotalCount] = useState(0);
-  const [error, setError] = useState("");
+  const [stats, setStats] = useState<BikeCounterStats>({ totalCount: 0, sessionCount: 0 });
+  const [history, setHistory] = useState<BikeCounterHistory | null>(null);
+  const [selectedRange, setSelectedRange] = useState<BikeHistoryRange>("month");
+  const [statsError, setStatsError] = useState("");
+  const [historyError, setHistoryError] = useState("");
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  function replaceTotalCount(value: number): void {
-    setTotalCount(value);
-    setError("");
+  function replaceStats(value: BikeCounterStats): void {
+    setStats(value);
+    setStatsError("");
   }
 
-  async function reload(): Promise<void> {
+  async function reloadStats(): Promise<void> {
     if (!enabled) {
       return;
     }
 
     try {
-      const stats = await getBikeCounterStats();
-      replaceTotalCount(stats.totalCount);
+      replaceStats(await getBikeCounterStats());
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue";
-      setError(message);
+      setStatsError(message);
       if (message === "Authentification invalide") {
         onAuthenticationInvalid();
       }
@@ -130,22 +140,78 @@ function useBikeStatsPolling(
   }
 
   useEffect(() => {
+    if (!historyEnabled) {
+      setIsHistoryLoading(false);
+      return;
+    }
+
     if (!enabled) {
       return;
     }
 
-    void reload().catch(() => undefined);
+    void reloadStats().catch(() => undefined);
     const interval = window.setInterval(() => {
-      void reload().catch(() => undefined);
+      void reloadStats().catch(() => undefined);
     }, 30000);
 
     return () => window.clearInterval(interval);
   }, [enabled]);
 
-  return { error, replaceTotalCount, totalCount };
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function reloadHistory(): Promise<void> {
+      setIsHistoryLoading(true);
+
+      try {
+        const next = await getBikeCounterHistory(selectedRange);
+        if (isMounted) {
+          setHistory(next);
+          setHistoryError("");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erreur inconnue";
+        if (isMounted) {
+          setHistoryError(message);
+        }
+        if (message === "Authentification invalide") {
+          onAuthenticationInvalid();
+        }
+      } finally {
+        if (isMounted) {
+          setIsHistoryLoading(false);
+        }
+      }
+    }
+
+    void reloadHistory();
+    const interval = window.setInterval(() => {
+      void reloadHistory();
+    }, 60000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, [enabled, historyEnabled, onAuthenticationInvalid, selectedRange]);
+
+  return {
+    error: [statsError, historyEnabled ? historyError : ""].filter(Boolean).join(" • "),
+    history,
+    isHistoryLoading,
+    replaceStats,
+    selectedRange,
+    setSelectedRange,
+    stats
+  };
 }
 
 export function App() {
+  const location = useLocation();
   const navigate = useNavigate();
   const initialSelectedService = getSelectedService();
   const [isAuthenticated, setIsAuthenticated] = useState(hasCredentials() && Boolean(initialSelectedService));
@@ -166,7 +232,12 @@ export function App() {
     isAuthenticated && (activeService === "food-commande" || activeService === "food-cuisine"),
     resetAuthenticationState
   );
-  const bikePolling = useBikeStatsPolling(isAuthenticated && activeService === "bike-counter", resetAuthenticationState);
+  const bikeHistoryEnabled = isAuthenticated && activeService === "bike-counter" && location.pathname === "/bike/analyse";
+  const bikePolling = useBikeStatsPolling(
+    isAuthenticated && activeService === "bike-counter",
+    bikeHistoryEnabled,
+    resetAuthenticationState
+  );
 
   useEffect(() => {
     async function init(): Promise<void> {
@@ -189,7 +260,7 @@ export function App() {
 
       if (selectedService === "bike-counter") {
         const stats = await getBikeCounterStats();
-        bikePolling.replaceTotalCount(stats.totalCount);
+        bikePolling.replaceStats(stats);
       } else {
         foodPolling.replaceCommandes(await getCommandes());
       }
@@ -229,6 +300,13 @@ export function App() {
 
   const serviceMeta = getServiceMeta(activeService);
   const lockedPath = getServicePath(activeService);
+  const isBikeService = activeService === "bike-counter";
+  const isBikeAnalyticsPage = location.pathname === "/bike/analyse";
+  const bikeToggleTarget = isBikeAnalyticsPage ? "/bike" : "/bike/analyse";
+  const bikeToggleLabel = isBikeAnalyticsPage ? "Retour aux stats" : "Voir l'analyse";
+  const currentScreenLabel = isBikeService
+    ? (isBikeAnalyticsPage ? "Analyse detaillee" : "Statistiques")
+    : serviceMeta.screenLabel;
 
   return (
     <Box sx={{ minHeight: "100vh" }}>
@@ -265,7 +343,17 @@ export function App() {
               </Typography>
             </Box>
           </Stack>
-          <Chip label={serviceMeta.screenLabel} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
+          <Chip label={currentScreenLabel} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
+          {isBikeService ? (
+            <Button
+              variant="outlined"
+              color="inherit"
+              onClick={() => navigate(bikeToggleTarget)}
+              sx={{ flexShrink: 0 }}
+            >
+              {bikeToggleLabel}
+            </Button>
+          ) : null}
           <Button variant="outlined" color="inherit" onClick={handleLogout} sx={{ flexShrink: 0 }}>
             Changer de service
           </Button>
@@ -314,7 +402,23 @@ export function App() {
             path="/bike"
             element={
               activeService === "bike-counter" ? (
-                <BikeCounterScreen totalCount={bikePolling.totalCount} error={bikePolling.error} />
+                <BikeCounterScreen error={bikePolling.error} stats={bikePolling.stats} />
+              ) : (
+                <Navigate to={lockedPath} replace />
+              )
+            }
+          />
+          <Route
+            path="/bike/analyse"
+            element={
+              activeService === "bike-counter" ? (
+                <BikeCounterAnalyticsScreen
+                  error={bikePolling.error}
+                  history={bikePolling.history}
+                  isHistoryLoading={bikePolling.isHistoryLoading}
+                  onRangeChange={bikePolling.setSelectedRange}
+                  selectedRange={bikePolling.selectedRange}
+                />
               ) : (
                 <Navigate to={lockedPath} replace />
               )

@@ -1,4 +1,12 @@
-import { AppService, BaseType, BikeCounterStats, Commande, CommandeStatus } from "./types";
+import {
+  AppService,
+  BaseType,
+  BikeCounterHistory,
+  BikeHistoryRange,
+  BikeCounterStats,
+  Commande,
+  CommandeStatus
+} from "./types";
 
 const storageKey = "dervenn-basic-auth";
 const serviceKey = "dervenn-service";
@@ -129,8 +137,7 @@ export async function getBikeCounterStats(): Promise<BikeCounterStats> {
   return data.stats;
 }
 
-export async function createBikeCounterEntry(): Promise<void> {
-  await apiFetch("/bike/counter", {
-    method: "POST"
-  });
+export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
+  const data = await apiFetch<{ history: BikeCounterHistory }>(`/bike/history?range=${encodeURIComponent(range)}`);
+  return data.history;
 }

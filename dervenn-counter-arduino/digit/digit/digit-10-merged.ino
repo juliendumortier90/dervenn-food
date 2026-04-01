@@ -1,25 +1,14 @@
-#include <SoftwareSerial.h>
-#include <LoRa_E220.h>
-#include <EEPROM.h>
-#include <avr/wdt.h>
+#include <WiFiS3.h>
+#include <WiFiSSLClient.h>
+#include <WiFiUdp.h>
+
+#if !defined(ARDUINO_UNOR4_WIFI)
+#error "Ce sketch est prevu uniquement pour Arduino UNO R4 WiFi."
+#endif
+
 #include <FastLED.h>
 
-// === Broches du module E220 (identiques a digit.ino) ===
-#define PIN_RX 2
-#define PIN_TX 3
-#define PIN_M0 4
-#define PIN_M1 5
-#define PIN_AUX 6
-
-// === Broche du bouton ===
-#define PIN_REMOTE_SAVE_BUTTON 8
-
-// === EEPROM ===
-#define EEPROM_ADDR_TOTAL   0
-#define EEPROM_ADDR_SESSION sizeof(int)
-const unsigned long SAVE_INTERVAL = 3UL * 60UL * 60UL * 1000UL; // 3 heures
-
-// === LED / Afficheur 7 segments ===
+#define PIN_REMOTE_RESET_BUTTON 8
 #define DATA_PIN 10
 #define LED_TYPE WS2811
 #define COLOR_ORDER RGB
@@ -28,120 +17,508 @@ const unsigned long SAVE_INTERVAL = 3UL * 60UL * 60UL * 1000UL; // 3 heures
 #define SEGMENTS_PER_DIGIT 7
 #define NUM_LEDS (NUM_DIGITS * SEGMENTS_PER_DIGIT)
 
-// Couleur des compteurs (hors animations)
 const CRGB COUNTER_COLOR = CRGB::Red;
-
-// Intensite pour les compteurs (0..255)
 const uint8_t COUNTER_BRIGHTNESS = 255;
-
-// Intensite pour les animations (0..255)
 const uint8_t ANIM_BRIGHTNESS = 255;
-
-// Cadence d'affichage
 const uint16_t FRAME_MS = 20;
-
-// Intervalle entre les sequences d'animations
-const uint32_t ANIM_INTERVAL_MS = 60UL * 1000UL * 5UL; // 1 minute
-
-// Duree d'une animation
+const uint32_t ANIM_INTERVAL_MS = 60UL * 1000UL * 5UL;
 const uint16_t ANIM_MS = 8000;
-
 const bool BOTTOM_ROW_REVERSED = true;
 
-CRGB leds[NUM_LEDS];
+const char *WIFI_SSID = "AndroidAP";
+const char *WIFI_PASSWORD = "totototo";
+const char *BIKE_HTTP_HOST = "n4l6c21u76.execute-api.eu-west-3.amazonaws.com";
+const char *BIKE_STATS_GET_PATH = "/prod/bike/stats";
+const char *BIKE_RESET_SESSION_POST_PATH = "/prod/bike/resetsession";
+const char *BIKE_AUTH_HEADER = "Basic Zm9vZDpwZXBkZXV4";
+const uint16_t BIKE_HTTPS_PORT = 443;
+const uint16_t DIGIT_UDP_PORT = 4210;
+const uint16_t COUNTER_UDP_PORT = 4211;
+const uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
+const uint32_t REMOTE_POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
+const uint16_t HTTP_TIMEOUT_MS = 10000;
+const uint32_t SERIAL_WAIT_MS = 3000;
+const uint32_t RESET_SESSION_HOLD_MS = 10000;
+const uint16_t BUTTON_BLINK_MS = 250;
+const uint16_t RESET_UDP_TIMEOUT_MS = 2000;
 
-// Segment index order: a, b, c, d, e, f, g
-// First row (digits 0..4): f=0, a=1, b=2, g=3, e=4, d=5, c=6
-const uint8_t segmentMapTop[SEGMENTS_PER_DIGIT] = {
-  1, // a
-  2, // b
-  6, // c
-  5, // d
-  4, // e
-  0, // f
-  3  // g
-};
-
-// Second row (digits 5..9): b=0, a=1, f=2, g=3, c=4, d=5, e=6
-const uint8_t segmentMapBottom[SEGMENTS_PER_DIGIT] = {
-  1, // a
-  0, // b
-  4, // c
-  5, // d
-  6, // e
-  2, // f
-  3  // g
-};
-
-// 7-seg glyphs, bits are a..g (bit0 = a, bit6 = g)
+const uint8_t segmentMapTop[SEGMENTS_PER_DIGIT] = {1, 2, 6, 5, 4, 0, 3};
+const uint8_t segmentMapBottom[SEGMENTS_PER_DIGIT] = {1, 0, 4, 5, 6, 2, 3};
 const uint8_t digitMask[10] = {
-  0b0111111, // 0: a b c d e f
-  0b0000110, // 1: b c
-  0b1011011, // 2: a b d e g
-  0b1001111, // 3: a b c d g
-  0b1100110, // 4: b c f g
-  0b1101101, // 5: a c d f g
-  0b1111101, // 6: a c d e f g
-  0b0000111, // 7: a b c
-  0b1111111, // 8: a b c d e f g
-  0b1101111  // 9: a b c d f g
+  0b0111111,
+  0b0000110,
+  0b1011011,
+  0b1001111,
+  0b1100110,
+  0b1101101,
+  0b1111101,
+  0b0000111,
+  0b1111111,
+  0b1101111
 };
 
-// Animations retenues (ID + 1 affiche)
-// 1 Snake, 3 RainbowWave, 18 Confetti
 const uint8_t NUM_ANIMATIONS = 3;
 const uint8_t animIdList[NUM_ANIMATIONS] = {1, 3, 18};
-
-// === Variables globales ===
-int lastTotal = 0;
-int lastSession = 0;
-unsigned long lastSaveTime = 0;
-bool newData = false;
-
-bool lastButtonState = HIGH;
-unsigned long buttonPressStart = 0;
-
-const uint32_t BUTTON_SAVE_MS = 2000;
-const uint32_t BUTTON_RESET_SESSION_MS = 10000;
-const uint32_t BUTTON_RESET_TOTAL_MS = 20000;
-const uint16_t BUTTON_BLINK_MS = 250;
-
-// === Watchdog ===
-const uint32_t WDT_TIMEOUT_MS = 2000;
-
-// === LoRa ===
-SoftwareSerial loraSerial(PIN_RX, PIN_TX);
-LoRa_E220 e220(&loraSerial, PIN_AUX, PIN_M0, PIN_M1);
-
-// === Etat affichage ===
 const uint8_t MODE_COUNT = 0;
 const uint8_t MODE_ANIM = 1;
+
+CRGB leds[NUM_LEDS];
+WiFiUDP udp;
+using SecureClient = WiFiSSLClient;
+
+int totalCount = 0;
+int sessionCount = 0;
+unsigned long lastWiFiConnectAttempt = 0;
+unsigned long lastRemotePollTime = 0;
+unsigned long buttonPressStart = 0;
+bool lastButtonState = HIGH;
+bool udpStarted = false;
+
 uint8_t mode = MODE_ANIM;
 uint8_t animIndex = 0;
 uint32_t modeStartMs = 0;
 uint32_t lastFrameMs = 0;
 uint32_t lastAnimTriggerMs = 0;
 
-const uint8_t BUTTON_ACTION_NONE = 0;
-const uint8_t BUTTON_ACTION_SAVE = 1;
-const uint8_t BUTTON_ACTION_RESET_SESSION = 2;
-const uint8_t BUTTON_ACTION_RESET_TOTAL = 3;
+void beginSerial() {
+  Serial.begin(9600);
 
-void initWatchdog() {
-  wdt_disable();
-  wdt_enable(WDTO_2S);
-  Serial.print("WDT actif (~");
-  Serial.print(WDT_TIMEOUT_MS);
-  Serial.println(" ms)");
+  unsigned long start = millis();
+  while (!Serial && millis() - start < SERIAL_WAIT_MS) {
+    delay(10);
+  }
+
+  delay(200);
 }
 
-void refreshWatchdog() {
-  wdt_reset();
+bool waitForClientData(SecureClient &client, uint32_t timeoutMs) {
+  unsigned long start = millis();
+  while (!client.available() && client.connected() && millis() - start < timeoutMs) {
+    delay(10);
+  }
+
+  return client.available() > 0;
 }
 
-// --------------------------------------------------------
-// OUTILS AFFICHAGE
-// --------------------------------------------------------
+int parseHttpStatusCode(const String &statusLine) {
+  int firstSpace = statusLine.indexOf(' ');
+  if (firstSpace < 0) {
+    return -1;
+  }
+
+  int secondSpace = statusLine.indexOf(' ', firstSpace + 1);
+  String code = secondSpace >= 0
+    ? statusLine.substring(firstSpace + 1, secondSpace)
+    : statusLine.substring(firstSpace + 1);
+  code.trim();
+  return code.toInt();
+}
+
+bool readHttpResponse(SecureClient &client, int &statusCode, String &body) {
+  if (!waitForClientData(client, HTTP_TIMEOUT_MS)) {
+    statusCode = -1;
+    return false;
+  }
+
+  String statusLine = client.readStringUntil('\n');
+  statusLine.trim();
+  statusCode = parseHttpStatusCode(statusLine);
+
+  while (waitForClientData(client, HTTP_TIMEOUT_MS)) {
+    String headerLine = client.readStringUntil('\n');
+    if (headerLine == "\r" || headerLine.length() == 0) {
+      break;
+    }
+  }
+
+  body = "";
+  unsigned long lastDataAt = millis();
+
+  while (client.connected() || client.available()) {
+    while (client.available()) {
+      body += (char)client.read();
+      lastDataAt = millis();
+    }
+
+    if (millis() - lastDataAt > HTTP_TIMEOUT_MS) {
+      break;
+    }
+
+    delay(10);
+  }
+
+  return true;
+}
+
+bool isAsciiDigit(char c) {
+  return c >= '0' && c <= '9';
+}
+
+bool isAsciiSpace(char c) {
+  return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+int clampCounterValue(long value) {
+  if (value < 0) return 0;
+  if (value > 999999L) return 999999;
+  return (int)value;
+}
+
+bool extractIntegerField(const String &payload, const char *key, long &value) {
+  String needle = "\"";
+  needle += key;
+  needle += "\"";
+
+  int keyPos = payload.indexOf(needle);
+  if (keyPos < 0) {
+    return false;
+  }
+
+  int colonPos = payload.indexOf(':', keyPos + needle.length());
+  if (colonPos < 0) {
+    return false;
+  }
+
+  int cursor = colonPos + 1;
+  while (cursor < payload.length() && isAsciiSpace(payload[cursor])) {
+    cursor++;
+  }
+
+  int start = cursor;
+  if (cursor < payload.length() && payload[cursor] == '-') {
+    cursor++;
+  }
+
+  int digitStart = cursor;
+  while (cursor < payload.length() && isAsciiDigit(payload[cursor])) {
+    cursor++;
+  }
+
+  if (cursor == digitStart) {
+    return false;
+  }
+
+  value = payload.substring(start, cursor).toInt();
+  return true;
+}
+
+bool parseStatsPayload(const String &payload, long &remoteTotalCount, long &remoteSessionCount) {
+  bool hasTotal = extractIntegerField(payload, "totalCount", remoteTotalCount);
+  bool hasSession = extractIntegerField(payload, "sessionCount", remoteSessionCount);
+
+  if (!hasTotal) {
+    return false;
+  }
+
+  if (!hasSession) {
+    remoteSessionCount = remoteTotalCount;
+  }
+
+  return true;
+}
+
+IPAddress computeBroadcastAddress() {
+  IPAddress ip = WiFi.localIP();
+  IPAddress mask = WiFi.subnetMask();
+  IPAddress broadcast;
+
+  for (uint8_t index = 0; index < 4; index++) {
+    broadcast[index] = (uint8_t)(ip[index] | (uint8_t)(~mask[index]));
+  }
+
+  return broadcast;
+}
+
+void startUdpListener() {
+  if (udpStarted) {
+    return;
+  }
+
+  if (udp.begin(DIGIT_UDP_PORT)) {
+    udpStarted = true;
+    Serial.print("Ecoute UDP sur le port ");
+    Serial.println(DIGIT_UDP_PORT);
+  } else {
+    Serial.println("Echec de l'initialisation UDP.");
+  }
+}
+
+void connectToWiFi() {
+  lastWiFiConnectAttempt = millis();
+
+  Serial.print("Connexion WiFi a ");
+  Serial.println(WIFI_SSID);
+
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Module WiFi indisponible sur cette carte.");
+    return;
+  }
+
+  String firmwareVersion = WiFi.firmwareVersion();
+  if (firmwareVersion < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Firmware WiFi a mettre a jour.");
+  }
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  uint8_t attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi connecte, IP=");
+    Serial.println(WiFi.localIP());
+    startUdpListener();
+  } else {
+    Serial.println("Connexion WiFi impossible, nouvel essai plus tard.");
+  }
+}
+
+void ensureWiFiConnected(uint32_t now) {
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
+
+  udpStarted = false;
+
+  if (now - lastWiFiConnectAttempt < WIFI_RETRY_INTERVAL_MS) {
+    return;
+  }
+
+  connectToWiFi();
+}
+
+void applyRemoteCounts(long remoteTotalCount, long remoteSessionCount) {
+  totalCount = clampCounterValue(remoteTotalCount);
+  sessionCount = clampCounterValue(remoteSessionCount);
+
+  Serial.print("Compteurs synchronises -> Total: ");
+  Serial.print(totalCount);
+  Serial.print(" | Session: ");
+  Serial.println(sessionCount);
+}
+
+void handleUdpPackets() {
+  if (!udpStarted) {
+    return;
+  }
+
+  char packetBuffer[64];
+
+  while (true) {
+    int packetSize = udp.parsePacket();
+    if (!packetSize) {
+      return;
+    }
+
+    int len = udp.read(packetBuffer, sizeof(packetBuffer) - 1);
+    if (len <= 0) {
+      continue;
+    }
+
+    packetBuffer[len] = '\0';
+    String payload = String(packetBuffer);
+    payload.trim();
+
+    if (!payload.startsWith("BIKE:")) {
+      continue;
+    }
+
+    int increment = payload.substring(5).toInt();
+    if (increment <= 0) {
+      continue;
+    }
+
+    totalCount = clampCounterValue((long)totalCount + increment);
+    sessionCount = clampCounterValue((long)sessionCount + increment);
+
+    Serial.print("UDP velo recu -> +");
+    Serial.print(increment);
+    Serial.print(" | Total: ");
+    Serial.print(totalCount);
+    Serial.print(" | Session: ");
+    Serial.println(sessionCount);
+  }
+}
+
+bool requestCounterFlushBeforeReset() {
+  if (WiFi.status() != WL_CONNECTED || !udpStarted) {
+    Serial.println("Reset session: coordination UDP indisponible.");
+    return false;
+  }
+
+  IPAddress broadcastIp = computeBroadcastAddress();
+  if (!udp.beginPacket(broadcastIp, COUNTER_UDP_PORT)) {
+    Serial.println("Reset session: impossible d'envoyer la demande UDP.");
+    return false;
+  }
+
+  udp.print("RESET_SESSION_FLUSH");
+  udp.endPacket();
+
+  unsigned long startedAt = millis();
+  char packetBuffer[64];
+
+  while (millis() - startedAt < RESET_UDP_TIMEOUT_MS) {
+    int packetSize = udp.parsePacket();
+    if (!packetSize) {
+      delay(10);
+      continue;
+    }
+
+    int len = udp.read(packetBuffer, sizeof(packetBuffer) - 1);
+    if (len <= 0) {
+      continue;
+    }
+
+    packetBuffer[len] = '\0';
+    String payload = String(packetBuffer);
+    payload.trim();
+
+    if (payload.startsWith("BIKE:")) {
+      int increment = payload.substring(5).toInt();
+      if (increment > 0) {
+        totalCount = clampCounterValue((long)totalCount + increment);
+        sessionCount = clampCounterValue((long)sessionCount + increment);
+      }
+      continue;
+    }
+
+    if (payload == "RESET_SESSION_READY") {
+      Serial.println("Reset session: counter pret.");
+      return true;
+    }
+
+    if (payload == "RESET_SESSION_FAILED") {
+      Serial.println("Reset session: flush counter impossible.");
+      return false;
+    }
+  }
+
+  Serial.println("Reset session: timeout de coordination UDP.");
+  return false;
+}
+
+void fetchRemoteCounts() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("GET /prod/bike/stats ignore: WiFi non connecte.");
+    return;
+  }
+
+  SecureClient client;
+  if (!client.connect(BIKE_HTTP_HOST, BIKE_HTTPS_PORT)) {
+    Serial.println("Connexion HTTPS impossible vers /prod/bike/stats.");
+    return;
+  }
+
+  client.print("GET ");
+  client.print(BIKE_STATS_GET_PATH);
+  client.println(" HTTP/1.1");
+  client.print("Host: ");
+  client.println(BIKE_HTTP_HOST);
+  client.println("Accept: application/json");
+  client.print("Authorization: ");
+  client.println(BIKE_AUTH_HEADER);
+  client.println("User-Agent: dervenn-digit/1.0");
+  client.println("Connection: close");
+  client.println();
+
+  int httpCode = -1;
+  String payload;
+  bool responseRead = readHttpResponse(client, httpCode, payload);
+  client.stop();
+
+  Serial.print("GET /prod/bike/stats -> HTTP ");
+  Serial.println(httpCode);
+
+  if (!responseRead) {
+    Serial.println("Erreur HTTP ou absence de reponse.");
+    return;
+  }
+
+  if (httpCode != 200) {
+    if (payload.length() > 0) {
+      Serial.println(payload);
+    }
+    return;
+  }
+
+  long remoteTotalCount = 0;
+  long remoteSessionCount = 0;
+  if (!parseStatsPayload(payload, remoteTotalCount, remoteSessionCount)) {
+    Serial.print("Reponse stats non reconnue: ");
+    Serial.println(payload);
+    return;
+  }
+
+  applyRemoteCounts(remoteTotalCount, remoteSessionCount);
+}
+
+bool resetSessionOnServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("POST /prod/bike/resetsession ignore: WiFi non connecte.");
+    return false;
+  }
+
+  SecureClient client;
+  if (!client.connect(BIKE_HTTP_HOST, BIKE_HTTPS_PORT)) {
+    Serial.println("Connexion HTTPS impossible vers /prod/bike/resetsession.");
+    return false;
+  }
+
+  client.print("POST ");
+  client.print(BIKE_RESET_SESSION_POST_PATH);
+  client.println(" HTTP/1.1");
+  client.print("Host: ");
+  client.println(BIKE_HTTP_HOST);
+  client.println("Accept: application/json");
+  client.print("Authorization: ");
+  client.println(BIKE_AUTH_HEADER);
+  client.println("Content-Length: 0");
+  client.println("User-Agent: dervenn-digit/1.0");
+  client.println("Connection: close");
+  client.println();
+
+  int httpCode = -1;
+  String payload;
+  bool responseRead = readHttpResponse(client, httpCode, payload);
+  client.stop();
+
+  Serial.print("POST /prod/bike/resetsession -> HTTP ");
+  Serial.println(httpCode);
+
+  if (!responseRead || httpCode < 200 || httpCode >= 300) {
+    if (payload.length() > 0) {
+      Serial.println(payload);
+    }
+    return false;
+  }
+
+  long remoteTotalCount = 0;
+  long remoteSessionCount = 0;
+  if (!parseStatsPayload(payload, remoteTotalCount, remoteSessionCount)) {
+    Serial.print("Reponse reset session non reconnue: ");
+    Serial.println(payload);
+    return false;
+  }
+
+  applyRemoteCounts(remoteTotalCount, remoteSessionCount);
+  return true;
+}
+
+void handleRemotePolling(uint32_t now) {
+  if (now - lastRemotePollTime < REMOTE_POLL_INTERVAL_MS) {
+    return;
+  }
+
+  lastRemotePollTime = now;
+  fetchRemoteCounts();
+}
+
 uint16_t baseLedIndexForDigit(uint8_t digitIndex) {
   return (uint16_t)digitIndex * SEGMENTS_PER_DIGIT;
 }
@@ -170,7 +547,7 @@ uint8_t rowDigitIndex(uint8_t rowStartDigit, uint8_t offset, bool reverse) {
 
 void renderRowNumber5(uint8_t rowStartDigit, int value, CRGB color, bool reverse) {
   uint32_t v = (value < 0) ? 0U : (uint32_t)value;
-  v %= 100000UL; // limite a 5 digits
+  v %= 100000UL;
 
   const uint32_t divisors[5] = {10000UL, 1000UL, 100UL, 10UL, 1UL};
   bool started = false;
@@ -192,36 +569,19 @@ CRGB scaleColor(CRGB color, uint8_t brightness) {
   return c;
 }
 
-uint8_t getButtonActionForDuration(uint32_t pressDuration) {
-  if (pressDuration >= BUTTON_RESET_TOTAL_MS) {
-    return BUTTON_ACTION_RESET_TOTAL;
-  }
-  if (pressDuration >= BUTTON_RESET_SESSION_MS) {
-    return BUTTON_ACTION_RESET_SESSION;
-  }
-  if (pressDuration >= BUTTON_SAVE_MS) {
-    return BUTTON_ACTION_SAVE;
-  }
-  return BUTTON_ACTION_NONE;
+void renderCountDisplayWithColor(CRGB color) {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  renderRowNumber5(0, totalCount, color, false);
+  renderRowNumber5(5, sessionCount, color, BOTTOM_ROW_REVERSED);
 }
 
-CRGB buttonActionColor(uint8_t action) {
-  switch (action) {
-    case BUTTON_ACTION_SAVE: return CRGB::Green;
-    case BUTTON_ACTION_RESET_SESSION: return CRGB(255, 96, 0);
-    case BUTTON_ACTION_RESET_TOTAL: return CRGB::Red;
-    default: return CRGB::Black;
-  }
+void renderCountDisplay() {
+  renderCountDisplayWithColor(scaleColor(COUNTER_COLOR, COUNTER_BRIGHTNESS));
 }
 
 void renderButtonFeedback(uint32_t now) {
   uint32_t pressDuration = now - buttonPressStart;
-  uint8_t action = getButtonActionForDuration(pressDuration);
-
-  if (action == BUTTON_ACTION_NONE) {
-    renderCountDisplay();
-    return;
-  }
+  CRGB feedbackColor = (pressDuration >= RESET_SESSION_HOLD_MS) ? CRGB::Red : CRGB::Green;
 
   bool ledsOn = ((now / BUTTON_BLINK_MS) % 2U) == 0U;
   if (!ledsOn) {
@@ -229,17 +589,7 @@ void renderButtonFeedback(uint32_t now) {
     return;
   }
 
-  renderCountDisplayWithColor(scaleColor(buttonActionColor(action), COUNTER_BRIGHTNESS));
-}
-
-void renderCountDisplayWithColor(CRGB color) {
-  fill_solid(leds, NUM_LEDS, CRGB::Black);
-  renderRowNumber5(0, lastTotal, color, false);
-  renderRowNumber5(5, lastSession, color, BOTTOM_ROW_REVERSED);
-}
-
-void renderCountDisplay() {
-  renderCountDisplayWithColor(scaleColor(COUNTER_COLOR, COUNTER_BRIGHTNESS));
+  renderCountDisplayWithColor(scaleColor(feedbackColor, COUNTER_BRIGHTNESS));
 }
 
 void renderSnake(CRGB *out, uint32_t t, uint16_t dur) {
@@ -287,7 +637,7 @@ void updateDisplay(uint32_t now) {
   }
   lastFrameMs = now;
 
-  if (digitalRead(PIN_REMOTE_SAVE_BUTTON) == LOW) {
+  if (digitalRead(PIN_REMOTE_RESET_BUTTON) == LOW) {
     renderButtonFeedback(now);
     FastLED.show();
     return;
@@ -326,27 +676,36 @@ void updateDisplay(uint32_t now) {
   FastLED.show();
 }
 
-// --------------------------------------------------------
-// SETUP
-// --------------------------------------------------------
+void handleButton(uint32_t now) {
+  bool buttonState = digitalRead(PIN_REMOTE_RESET_BUTTON);
+
+  if (lastButtonState == HIGH && buttonState == LOW) {
+    buttonPressStart = now;
+  }
+
+  if (lastButtonState == LOW && buttonState == HIGH) {
+    uint32_t pressDuration = now - buttonPressStart;
+    if (pressDuration >= RESET_SESSION_HOLD_MS) {
+      Serial.println("Relachement -> reset session distant.");
+      if (requestCounterFlushBeforeReset() && resetSessionOnServer()) {
+        mode = MODE_COUNT;
+        lastAnimTriggerMs = now;
+      }
+    }
+  }
+
+  lastButtonState = buttonState;
+}
+
 void setup() {
-  Serial.begin(9600);
-  delay(500);
-  Serial.println("=== Recepteur LoRa E220 pret ===");
+  beginSerial();
+  Serial.println("=== Afficheur compteur WiFi pret ===");
 
-  pinMode(PIN_REMOTE_SAVE_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_REMOTE_RESET_BUTTON, INPUT_PULLUP);
 
-  initWatchdog();
-
-  setupLoRa();
-  loadCountsFromEEPROM();
-
-  Serial.print("Valeurs restaurees -> Total: ");
-  Serial.print(lastTotal);
-  Serial.print(" | Session: ");
-  Serial.println(lastSession);
-
-  lastSaveTime = millis();
+  connectToWiFi();
+  fetchRemoteCounts();
+  lastRemotePollTime = millis();
 
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
   FastLED.setBrightness(255);
@@ -358,127 +717,12 @@ void setup() {
   lastAnimTriggerMs = modeStartMs;
 }
 
-// --------------------------------------------------------
-// LOOP PRINCIPALE
-// --------------------------------------------------------
 void loop() {
   uint32_t now = millis();
 
-  refreshWatchdog();
-  handleLoRaReception();
-  handlePeriodicSave(now);
+  ensureWiFiConnected(now);
+  handleUdpPackets();
+  handleRemotePolling(now);
   handleButton(now);
   updateDisplay(now);
-}
-
-// --------------------------------------------------------
-// INITIALISATION LORA
-// --------------------------------------------------------
-void setupLoRa() {
-  e220.begin();
-  e220.setMode(MODE_0_NORMAL);
-  Serial.println("Module LoRa E220 initialise en MODE_0_NORMAL");
-}
-
-// --------------------------------------------------------
-// GESTION RECEPTION LORA
-// --------------------------------------------------------
-void handleLoRaReception() {
-  if (e220.available() <= 1) return;
-
-  ResponseContainer rc = e220.receiveMessage();
-
-  if (rc.status.code != 1) {
-    Serial.print("Erreur LoRa : ");
-    Serial.println(rc.status.getResponseDescription());
-    return;
-  }
-
-  String msg = rc.data;
-  msg.trim();
-
-  if (msg == "BIKE") {
-    lastTotal++;
-    lastSession++;
-    newData = true;
-
-    Serial.print("Velo recu -> Total: ");
-    Serial.print(lastTotal);
-    Serial.print(" | Session: ");
-    Serial.println(lastSession);
-  }
-}
-
-// --------------------------------------------------------
-// GESTION SAUVEGARDE PERIODIQUE
-// --------------------------------------------------------
-void handlePeriodicSave(uint32_t now) {
-  if (now - lastSaveTime >= SAVE_INTERVAL && newData) {
-    saveCountsToEEPROM();
-    newData = false;
-    lastSaveTime = now;
-  }
-}
-
-// --------------------------------------------------------
-// GESTION DU BOUTON
-// --------------------------------------------------------
-void handleButton(uint32_t now) {
-  bool buttonState = digitalRead(PIN_REMOTE_SAVE_BUTTON);
-
-  // Debut d'appui
-  if (lastButtonState == HIGH && buttonState == LOW) {
-    buttonPressStart = now;
-  }
-
-  if (lastButtonState == LOW && buttonState == HIGH) {
-    uint32_t pressDuration = now - buttonPressStart;
-    uint8_t action = getButtonActionForDuration(pressDuration);
-
-    if (action == BUTTON_ACTION_SAVE) {
-      Serial.println("Relachement -> sauvegarde locale.");
-      saveCountsToEEPROM();
-      newData = false;
-      lastSaveTime = now;
-    } else if (action == BUTTON_ACTION_RESET_SESSION) {
-      Serial.println("Relachement -> remise a zero du compteur session.");
-      lastSession = 0;
-      EEPROM.put(EEPROM_ADDR_SESSION, lastSession);
-      newData = false;
-      lastSaveTime = now;
-    } else if (action == BUTTON_ACTION_RESET_TOTAL) {
-      Serial.println("Relachement -> remise a zero des compteurs total et session.");
-      lastTotal = 0;
-      lastSession = 0;
-      EEPROM.put(EEPROM_ADDR_TOTAL, lastTotal);
-      EEPROM.put(EEPROM_ADDR_SESSION, lastSession);
-      newData = false;
-      lastSaveTime = now;
-    }
-
-    mode = MODE_COUNT;
-    lastAnimTriggerMs = now;
-  }
-
-  lastButtonState = buttonState;
-}
-
-// --------------------------------------------------------
-// GESTION EEPROM
-// --------------------------------------------------------
-void loadCountsFromEEPROM() {
-  EEPROM.get(EEPROM_ADDR_TOTAL, lastTotal);
-  EEPROM.get(EEPROM_ADDR_SESSION, lastSession);
-
-  if (lastTotal < 0 || lastTotal > 999999) lastTotal = 0;
-  if (lastSession < 0 || lastSession > 999999) lastSession = 0;
-}
-
-void saveCountsToEEPROM() {
-  EEPROM.put(EEPROM_ADDR_TOTAL, lastTotal);
-  EEPROM.put(EEPROM_ADDR_SESSION, lastSession);
-  Serial.print("Sauvegarde locale -> Total: ");
-  Serial.print(lastTotal);
-  Serial.print(" | Session: ");
-  Serial.println(lastSession);
 }

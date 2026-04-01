@@ -33,10 +33,16 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
-    const bikeTable = new dynamodb.Table(this, "DervennBikeTable", {
-      tableName: "dervenn-bike",
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+    const bikeEventsTable = new dynamodb.Table(this, "DervennBikeEventsTable", {
+      tableName: "dervenn-bike-events",
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
+    const bikeStatsTable = new dynamodb.Table(this, "DervennBikeStatsTable", {
+      tableName: "dervenn-bike-stats",
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY
     });
@@ -47,7 +53,8 @@ export class DervennFoodStack extends Stack {
     };
 
     const bikeLambdaEnvironment = {
-      BIKE_TABLE_NAME: bikeTable.tableName,
+      BIKE_EVENTS_TABLE_NAME: bikeEventsTable.tableName,
+      BIKE_STATS_TABLE_NAME: bikeStatsTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
     };
 
@@ -84,7 +91,8 @@ export class DervennFoodStack extends Stack {
     });
 
     commandesTable.grantReadWriteData(commandesFunction);
-    bikeTable.grantReadWriteData(bikeCounterFunction);
+    bikeEventsTable.grantReadWriteData(bikeCounterFunction);
+    bikeStatsTable.grantReadWriteData(bikeCounterFunction);
 
     const api = new apigateway.RestApi(this, "DervennApi", {
       restApiName: "Dervenn API",
@@ -126,6 +134,18 @@ export class DervennFoodStack extends Stack {
 
     const bikeStatsResource = bikeResource.addResource("stats");
     bikeStatsResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const bikeHistoryResource = bikeResource.addResource("history");
+    bikeHistoryResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const bikeResetSessionResource = bikeResource.addResource("resetsession");
+    bikeResetSessionResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });
