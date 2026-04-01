@@ -1,3 +1,6 @@
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import LocalFireDepartmentRoundedIcon from "@mui/icons-material/LocalFireDepartmentRounded";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import type { ChangeEvent } from "react";
 import {
   Alert,
@@ -5,7 +8,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -28,8 +30,35 @@ interface CommandeScreenProps {
 
 type BaseChoice = "CREME_FRAICHE" | "TOMATE";
 
+const statusMeta = {
+  A_FAIRE: {
+    label: "A faire",
+    color: "#f7a728"
+  },
+  EN_COURS: {
+    label: "En cours",
+    color: "#8a5cff"
+  },
+  PRETE: {
+    label: "Prete",
+    color: "#14b885"
+  },
+  DELIVREE: {
+    label: "Delivree",
+    color: "#34a2ff"
+  }
+} as const;
+
 function normalizeCommandeNumber(value: string): number {
   return Number(value.trim());
+}
+
+function getCommandeMeta(commande: Commande) {
+  return {
+    accent: statusMeta[commande.status].color,
+    statusLabel: statusMeta[commande.status].label,
+    baseLabel: commande.baseType === "TOMATE" ? "Tomate" : "Creme"
+  };
 }
 
 export function CommandeScreen({
@@ -51,6 +80,7 @@ export function CommandeScreen({
   const [deleteStartedErrorOpen, setDeleteStartedErrorOpen] = useState(false);
   const pendingCount = commandes.filter((commande) => commande.status !== "DELIVREE").length;
   const parsedCommandeNumber = normalizeCommandeNumber(commandeNumber);
+  const hasValidCommandeNumber = Number.isInteger(parsedCommandeNumber) && parsedCommandeNumber >= 1;
   const recentCommandes = commandes.slice(-15).reverse();
   const recentCommandesTitle =
     recentCommandes.length < 15 ? `${recentCommandes.length} dernieres commandes` : "15 dernieres commandes";
@@ -147,21 +177,57 @@ export function CommandeScreen({
     <>
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 4 }}>
-          <Card sx={{ height: "100%", bgcolor: "#9c2f00", color: "white" }}>
-            <CardContent>
-              <Typography variant="h2">{pendingCount}</Typography>
-              <Typography variant="h6">pizzas encore dans le circuit</Typography>
+          <Card
+            sx={{
+              height: "100%",
+              minHeight: 312,
+              overflow: "hidden",
+              position: "relative",
+              background:
+                "radial-gradient(circle at 75% 35%, rgba(255,147,42,0.2), transparent 22%), linear-gradient(180deg, rgba(42,19,20,0.98) 0%, rgba(20,14,29,0.98) 100%)"
+            }}
+          >
+            <Box
+              sx={{
+                position: "absolute",
+                inset: "24% -8% auto auto",
+                width: 220,
+                height: 220,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle at 50% 50%, rgba(255,149,56,0.82), rgba(154,61,12,0.45) 62%, rgba(0,0,0,0) 68%)",
+                opacity: 0.6
+              }}
+            />
+            <CardContent sx={{ height: "100%", p: 3.5, position: "relative" }}>
+              <Stack justifyContent="space-between" sx={{ height: "100%" }}>
+                <Box>
+                  <Typography
+                    variant="h1"
+                    sx={{ color: "primary.light", fontSize: { xs: "4.2rem", md: "5rem" }, lineHeight: 1 }}
+                  >
+                    {pendingCount}
+                  </Typography>
+                  <Typography variant="h5" sx={{ maxWidth: 220 }}>
+                    pizzas encore dans le circuit
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "#ff8a4d" }}>
+                  <LocalFireDepartmentRoundedIcon fontSize="small" />
+                  <Typography sx={{ fontWeight: 700 }}>Chaud devant !</Typography>
+                </Stack>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
         <Grid size={{ xs: 12, md: 8 }}>
-          <Card>
-            <CardContent>
+          <Card sx={{ height: "100%" }}>
+            <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
               <Stack spacing={3}>
-                <Box>
+                <Box sx={{ pl: 2, borderLeft: "4px solid", borderColor: "primary.main" }}>
                   <Typography variant="h4">Nouvelle commande</Typography>
                   <Typography color="text.secondary">
-                    Le numero est saisi au poste commande puis envoye en cuisine apres confirmation.
+                    Le numero est saisi au bar puis envoye en cuisine apres confirmation.
                   </Typography>
                 </Box>
                 {error ? <Alert severity="error">{error}</Alert> : null}
@@ -179,13 +245,15 @@ export function CommandeScreen({
                   value={comment}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => setComment(event.target.value)}
                   fullWidth
+                  multiline
+                  minRows={3}
                 />
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                   <Button
                     size="large"
                     variant="contained"
                     color="primary"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !hasValidCommandeNumber}
                     onClick={() => openCreateConfirmation("CREME_FRAICHE")}
                   >
                     Ajouter creme fraiche
@@ -194,7 +262,7 @@ export function CommandeScreen({
                     size="large"
                     variant="contained"
                     color="secondary"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !hasValidCommandeNumber}
                     onClick={() => openCreateConfirmation("TOMATE")}
                   >
                     Ajouter tomate
@@ -206,42 +274,73 @@ export function CommandeScreen({
         </Grid>
         <Grid size={12}>
           <Card>
-            <CardContent>
+            <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
               <Stack spacing={2}>
                 <Typography variant="h5">{recentCommandesTitle}</Typography>
                 <Stack spacing={1.5}>
-                  {recentCommandes.map((commande) => (
-                    <Stack
-                      key={commande.commandeNumber}
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1}
-                      alignItems={{ xs: "stretch", sm: "center" }}
-                      justifyContent="space-between"
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        border: "1px solid",
-                        borderColor: "divider"
-                      }}
-                    >
-                      <Chip
-                        label={`#${commande.commandeNumber} ${commande.baseType === "TOMATE" ? "Tomate" : "Creme"} ${commande.status}`}
-                        color={commande.status === "PRETE" ? "success" : "default"}
-                        variant="outlined"
-                      />
-                      {commande.status === "A_FAIRE" ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          disabled={isSubmitting}
-                          onClick={() => openDeleteConfirmation(commande.commandeNumber)}
+                  {recentCommandes.map((commande) => {
+                    const meta = getCommandeMeta(commande);
+
+                    return (
+                      <Box
+                        key={commande.commandeNumber}
+                        sx={{
+                          p: 2,
+                          borderRadius: 4,
+                          border: "1px solid rgba(158, 176, 214, 0.12)",
+                          background: "rgba(12, 19, 35, 0.7)"
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={1.5}
+                          alignItems={{ xs: "flex-start", md: "center" }}
+                          justifyContent="space-between"
                         >
-                          Supprimer
-                        </Button>
-                      ) : null}
-                    </Stack>
-                  ))}
+                          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                            <Box
+                              sx={{
+                                width: 4,
+                                alignSelf: "stretch",
+                                borderRadius: 999,
+                                backgroundColor: meta.accent
+                              }}
+                            />
+                            <Stack spacing={0.5}>
+                              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                                <Typography variant="h6" sx={{ color: meta.accent }}>
+                                  #{commande.commandeNumber}
+                                </Typography>
+                                <Typography>{meta.baseLabel}</Typography>
+                                <Typography color="text.secondary">{meta.statusLabel}</Typography>
+                              </Stack>
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "text.secondary" }}>
+                                <ScheduleRoundedIcon sx={{ fontSize: 16 }} />
+                                <Typography variant="body2">
+                                  {new Date(commande.updatedAt).toLocaleTimeString("fr-FR", {
+                                    hour: "2-digit",
+                                    minute: "2-digit"
+                                  })}
+                                </Typography>
+                              </Stack>
+                            </Stack>
+                          </Stack>
+                          {commande.status === "A_FAIRE" ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={isSubmitting}
+                              startIcon={<DeleteOutlineRoundedIcon />}
+                              onClick={() => openDeleteConfirmation(commande.commandeNumber)}
+                            >
+                              Supprimer
+                            </Button>
+                          ) : null}
+                        </Stack>
+                      </Box>
+                    );
+                  })}
                   {commandes.length === 0 ? (
                     <Typography color="text.secondary">Aucune commande pour le moment.</Typography>
                   ) : null}
@@ -257,23 +356,17 @@ export function CommandeScreen({
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1, minWidth: 320 }}>
             <Typography>Voulez vous creer la commande numero</Typography>
-            <Typography variant="h4" sx={{ color: "error.main", fontWeight: 800 }}>
+            <Typography variant="h4" sx={{ color: "primary.main", fontWeight: 800 }}>
               {Number.isInteger(parsedCommandeNumber) ? parsedCommandeNumber : "?"}
             </Typography>
-            <Typography>
-              Base {pendingBaseType === "TOMATE" ? "tomate" : "creme fraiche"}
-            </Typography>
+            <Typography>Base {pendingBaseType === "TOMATE" ? "tomate" : "creme fraiche"}</Typography>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPendingBaseType(null)} disabled={isSubmitting}>
             Annuler
           </Button>
-          <Button
-            variant="contained"
-            onClick={() => void handleConfirmedAdd()}
-            disabled={isSubmitting}
-          >
+          <Button variant="contained" onClick={() => void handleConfirmedAdd()} disabled={isSubmitting}>
             Creer la commande
           </Button>
         </DialogActions>
@@ -292,20 +385,14 @@ export function CommandeScreen({
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1, minWidth: 360 }}>
             <Typography color="error" sx={{ fontWeight: 800 }}>
-              Le numero de commande n'est pas juste apres le dernier numero enregistre.
+              Le numero de commande n&apos;est pas juste apres le dernier numero enregistre.
             </Typography>
-            <Typography>
-              Dernier numero enregistre: {lastCommandeNumber || "aucun"}
-            </Typography>
-            <Typography>
-              Numero attendu: {expectedCommandeNumber}
-            </Typography>
-            <Typography variant="h4" sx={{ color: "error.main", fontWeight: 800 }}>
+            <Typography>Dernier numero enregistre: {lastCommandeNumber || "aucun"}</Typography>
+            <Typography>Numero attendu: {expectedCommandeNumber}</Typography>
+            <Typography variant="h4" sx={{ color: "primary.main", fontWeight: 800 }}>
               {parsedCommandeNumber}
             </Typography>
-            <Typography>
-              Voulez vous vraiment creer ce numero de commande ?
-            </Typography>
+            <Typography>Voulez vous vraiment creer ce numero de commande ?</Typography>
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -328,7 +415,7 @@ export function CommandeScreen({
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1, minWidth: 320 }}>
             <Typography color="error" sx={{ fontWeight: 800 }}>
-              La commande n'a pas ete enregistree car ce numero existe deja.
+              La commande n&apos;a pas ete enregistree car ce numero existe deja.
             </Typography>
             <Typography variant="h4" sx={{ color: "error.main", fontWeight: 800 }}>
               {parsedCommandeNumber}
@@ -362,9 +449,7 @@ export function CommandeScreen({
             <TextField
               label="Numero de ticket"
               value={deleteConfirmationInput}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setDeleteConfirmationInput(event.target.value)
-              }
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setDeleteConfirmationInput(event.target.value)}
               fullWidth
             />
           </Stack>
@@ -383,10 +468,7 @@ export function CommandeScreen({
             variant="contained"
             color="error"
             onClick={() => void handleConfirmedDelete()}
-            disabled={
-              isSubmitting ||
-              deleteConfirmationInput.trim() !== String(pendingDeleteNumber ?? "")
-            }
+            disabled={isSubmitting || deleteConfirmationInput.trim() !== String(pendingDeleteNumber ?? "")}
           >
             Supprimer
           </Button>

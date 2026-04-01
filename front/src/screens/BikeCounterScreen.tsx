@@ -1,3 +1,4 @@
+import PedalBikeRoundedIcon from "@mui/icons-material/PedalBikeRounded";
 import { Alert, Box, Card, CardContent, Stack, Typography } from "@mui/material";
 
 interface BikeCounterScreenProps {
@@ -19,17 +20,37 @@ export function BikeCounterScreen({ totalCount, error }: BikeCounterScreenProps)
         {error ? <Alert severity="error">{error}</Alert> : null}
         <Card
           sx={{
-            background: "linear-gradient(145deg, #114b4a 0%, #1f7a63 100%)",
-            color: "white",
-            boxShadow: "0 30px 80px rgba(17, 75, 74, 0.24)"
+            overflow: "hidden",
+            position: "relative"
           }}
         >
-          <CardContent sx={{ p: { xs: 4, md: 6 }, textAlign: "center" }}>
+          <Box
+            sx={{
+              position: "absolute",
+              inset: "auto -40px -60px auto",
+              width: 220,
+              height: 220,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(22,168,123,0.28), rgba(22,168,123,0))"
+            }}
+          />
+          <CardContent sx={{ p: { xs: 4, md: 6 }, textAlign: "center", position: "relative" }}>
             <Stack spacing={2} alignItems="center">
-              <Typography
-                variant="overline"
-                sx={{ letterSpacing: "0.24em", opacity: 0.82 }}
+              <Box
+                sx={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "18px",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "secondary.light",
+                  background: "rgba(22,168,123,0.12)",
+                  border: "1px solid rgba(22,168,123,0.2)"
+                }}
               >
+                <PedalBikeRoundedIcon />
+              </Box>
+              <Typography variant="overline" sx={{ letterSpacing: "0.24em", opacity: 0.82 }}>
                 Dervenn Bike
               </Typography>
               <Typography variant="h2" sx={{ fontSize: { xs: "4rem", md: "5.5rem" }, lineHeight: 1 }}>

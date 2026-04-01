@@ -1,3 +1,6 @@
+import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
+import FlagRoundedIcon from "@mui/icons-material/FlagRounded";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import type { ChangeEvent } from "react";
 import {
   Alert,
@@ -49,6 +52,27 @@ const forwardActionByStatus: Record<Exclude<CommandeStatus, "DELIVREE">, StatusA
   PRETE: { label: "Delivrer" }
 };
 
+function getForwardButtonSx(status: Exclude<CommandeStatus, "DELIVREE">) {
+  if (status === "A_FAIRE") {
+    return {
+      background: "linear-gradient(135deg, #f5a623 0%, #c97809 100%)",
+      boxShadow: "0 12px 24px rgba(201, 120, 9, 0.24)"
+    };
+  }
+
+  if (status === "EN_COURS") {
+    return {
+      background: "linear-gradient(135deg, #8a5cff 0%, #5d36d6 100%)",
+      boxShadow: "0 12px 24px rgba(93, 54, 214, 0.24)"
+    };
+  }
+
+  return {
+    background: "linear-gradient(135deg, #14b885 0%, #0d8c68 100%)",
+    boxShadow: "0 12px 24px rgba(13, 140, 104, 0.24)"
+  };
+}
+
 function previousStatus(status: CommandeStatus): CommandeStatus | null {
   if (status === "EN_COURS") {
     return "A_FAIRE";
@@ -97,39 +121,51 @@ function getStatusChipSx(status: CommandeStatus) {
   if (status === "A_FAIRE") {
     return {
       fontWeight: 800,
-      bgcolor: "#eef2f6",
-      color: "#44505c",
-      border: "1px solid #cfd7df",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65)"
+      cursor: "default",
+      bgcolor: "rgba(247, 167, 40, 0.14)",
+      color: "#f7a728",
+      border: "1px solid rgba(247, 167, 40, 0.24)",
+      "& .MuiChip-icon": {
+        color: "inherit"
+      }
     };
   }
 
   if (status === "EN_COURS") {
     return {
       fontWeight: 800,
-      bgcolor: "#ffe2bd",
-      color: "#8a4b00",
-      border: "1px solid #f0b46a",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)"
+      cursor: "default",
+      bgcolor: "rgba(138, 92, 255, 0.14)",
+      color: "#9f7cff",
+      border: "1px solid rgba(138, 92, 255, 0.24)",
+      "& .MuiChip-icon": {
+        color: "inherit"
+      }
     };
   }
 
   if (status === "PRETE") {
     return {
       fontWeight: 800,
-      bgcolor: "#d9f5ea",
-      color: "#145244",
-      border: "1px solid #82d1ba",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)"
+      cursor: "default",
+      bgcolor: "rgba(20, 184, 133, 0.14)",
+      color: "#14b885",
+      border: "1px solid rgba(20, 184, 133, 0.24)",
+      "& .MuiChip-icon": {
+        color: "inherit"
+      }
     };
   }
 
   return {
     fontWeight: 800,
-    bgcolor: "#ede8ff",
-    color: "#4b3699",
-    border: "1px solid #bcaae8",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)"
+    cursor: "default",
+    bgcolor: "rgba(52, 162, 255, 0.14)",
+    color: "#34a2ff",
+    border: "1px solid rgba(52, 162, 255, 0.24)",
+    "& .MuiChip-icon": {
+      color: "inherit"
+    }
   };
 }
 
@@ -142,10 +178,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
   const delivered = commandes.filter((commande) => commande.status === "DELIVREE");
   const actionsDisabled = Boolean(error) || isSubmitting;
   const lastDeliveredCommande = useMemo(
-    () =>
-      [...delivered].sort(
-        (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
-      )[0],
+    () => [...delivered].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0],
     [delivered]
   );
 
@@ -198,10 +231,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
 
     setIsSubmitting(true);
     try {
-      const updatedCommande = await updateCommandeStatus(
-        rollbackIntent.commandeNumber,
-        rollbackIntent.targetStatus
-      );
+      const updatedCommande = await updateCommandeStatus(rollbackIntent.commandeNumber, rollbackIntent.targetStatus);
       onCommandeUpdated(updatedCommande);
       setRollbackIntent(null);
       setRollbackConfirmationInput("");
@@ -215,7 +245,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.7fr) minmax(260px, 0.9fr)",
+          gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) 340px" },
           gap: 3,
           alignItems: "start"
         }}
@@ -225,16 +255,17 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
             <Typography variant="h4">File de preparation</Typography>
             <Chip
               label={`${toCook.length} en attente`}
-              sx={{ fontWeight: 700, bgcolor: "#d8f3eb", color: "#145244" }}
+              sx={{ fontWeight: 700, bgcolor: "rgba(247, 167, 40, 0.14)", color: "#f7a728" }}
             />
             <Chip
               label={`${delivered.length} delivrees`}
-              sx={{ fontWeight: 700, bgcolor: "#ece7ff", color: "#4b3699" }}
+              sx={{ fontWeight: 700, bgcolor: "rgba(52, 162, 255, 0.14)", color: "#34a2ff" }}
             />
             <Button
               variant="outlined"
               size="small"
               disabled={actionsDisabled || !lastDeliveredCommande}
+              startIcon={<AutorenewRoundedIcon />}
               onClick={() => {
                 if (lastDeliveredCommande) {
                   openRollbackConfirmation(lastDeliveredCommande);
@@ -244,26 +275,27 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
               Retour derniere delivree
             </Button>
           </Stack>
-        {error ? <Alert severity="error">{error}</Alert> : null}
-        <Grid container spacing={2}>
-          {toCook.map((commande) => {
-            if (!isQueueStatus(commande.status)) {
-              return null;
-            }
+          {error ? <Alert severity="error">{error}</Alert> : null}
+          <Grid container spacing={2}>
+            {toCook.map((commande) => {
+              if (!isQueueStatus(commande.status)) {
+                return null;
+              }
 
-            const forwardAction = forwardActionByStatus[commande.status];
-            const rollbackTarget = previousStatus(commande.status);
+              const forwardAction = forwardActionByStatus[commande.status];
+              const rollbackTarget = previousStatus(commande.status);
 
               return (
-                <Grid key={commande.commandeNumber} size={{ xs: 6 }}>
+                <Grid key={commande.commandeNumber} size={12}>
                   <Card sx={{ height: "100%" }}>
-                    <CardContent>
-                      <Stack spacing={1.5}>
+                    <CardContent sx={{ p: 3 }}>
+                      <Stack spacing={2}>
                         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                           <Typography variant="h5" sx={{ fontWeight: 800 }}>
                             #{commande.commandeNumber}
                           </Typography>
                           <Chip
+                            icon={<FlagRoundedIcon fontSize="small" />}
                             label={statusLabel[commande.status]}
                             size="small"
                             sx={getStatusChipSx(commande.status)}
@@ -277,12 +309,22 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
                             {commande.comment}
                           </Typography>
                         ) : null}
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "text.secondary" }}>
+                          <ScheduleRoundedIcon sx={{ fontSize: 16 }} />
+                          <Typography variant="body2">
+                            Cree le{" "}
+                            {new Date(commande.createdAt).toLocaleTimeString("fr-FR", {
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            })}
+                          </Typography>
+                        </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                           <Button
                             variant="contained"
                             size="small"
-                            color="primary"
                             disabled={actionsDisabled}
+                            sx={getForwardButtonSx(commande.status)}
                             onClick={() => void handleAdvance(commande)}
                           >
                             {forwardAction.label}
@@ -314,12 +356,13 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
 
         <Card
           sx={{
-            position: "sticky",
+            position: { xs: "static", md: "sticky" },
             top: 96,
-            bgcolor: "#fff4d6"
+            alignSelf: "start",
+            background: "linear-gradient(180deg, rgba(18,31,47,0.98) 0%, rgba(10,18,32,0.98) 100%)"
           }}
         >
-          <CardContent>
+          <CardContent sx={{ p: 3 }}>
             <Typography variant="h4" gutterBottom>
               Pizzas pretes
             </Typography>
@@ -334,16 +377,17 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
                   <Box
                     key={commande.commandeNumber}
                     sx={{
-                      p: 2,
+                      p: 2.5,
                       borderRadius: 3,
-                      bgcolor: "white",
-                      boxShadow: 1
+                      border: "1px solid rgba(158, 176, 214, 0.12)",
+                      bgcolor: "rgba(7, 12, 24, 0.88)"
                     }}
                   >
                     <Stack spacing={1.5}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
                         <Typography variant="h4">#{commande.commandeNumber}</Typography>
                         <Chip
+                          icon={<FlagRoundedIcon fontSize="small" />}
                           label={statusLabel[commande.status]}
                           size="small"
                           sx={getStatusChipSx(commande.status)}
@@ -352,18 +396,22 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
                       <Typography variant="body1">
                         {commande.baseType === "TOMATE" ? "Tomate" : "Creme fraiche"}
                       </Typography>
-                      {commande.comment ? <Typography variant="body2">{commande.comment}</Typography> : null}
+                      {commande.comment ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {commande.comment}
+                        </Typography>
+                      ) : null}
                       {preparationDuration ? (
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: "#145244" }}>
-                          Temps jusqu'a a delivrer: {preparationDuration}
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: "secondary.main" }}>
+                          Temps jusqu&apos;a a delivrer: {preparationDuration}
                         </Typography>
                       ) : null}
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                         <Button
                           variant="contained"
-                          color="primary"
                           size="small"
                           disabled={actionsDisabled}
+                          sx={getForwardButtonSx("PRETE")}
                           onClick={() => void handleAdvance(commande)}
                         >
                           {forwardActionByStatus.PRETE.label}
@@ -381,7 +429,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
                   </Box>
                 );
               })}
-              {ready.length === 0 ? <Typography>Aucune pizza prete.</Typography> : null}
+              {ready.length === 0 ? <Typography color="text.secondary">Aucune pizza prete.</Typography> : null}
             </Stack>
           </CardContent>
         </Card>
@@ -407,9 +455,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
             <TextField
               label="Numero de ticket"
               value={rollbackConfirmationInput}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setRollbackConfirmationInput(event.target.value)
-              }
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setRollbackConfirmationInput(event.target.value)}
               fullWidth
             />
           </Stack>
@@ -427,10 +473,7 @@ export function CuisineScreen({ commandes, onCommandeUpdated, error }: CuisineSc
           <Button
             variant="contained"
             onClick={() => void handleConfirmedRollback()}
-            disabled={
-              isSubmitting ||
-              rollbackConfirmationInput.trim() !== String(rollbackIntent?.commandeNumber ?? "")
-            }
+            disabled={isSubmitting || rollbackConfirmationInput.trim() !== String(rollbackIntent?.commandeNumber ?? "")}
           >
             Confirmer
           </Button>

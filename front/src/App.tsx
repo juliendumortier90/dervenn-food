@@ -1,7 +1,9 @@
+import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
 import {
   AppBar,
   Box,
   Button,
+  Chip,
   Container,
   Stack,
   Toolbar,
@@ -14,14 +16,14 @@ import {
   getApiBaseUrl,
   getBikeCounterStats,
   getCommandes,
-  hasCredentials,
   getSelectedService,
+  hasCredentials,
   loadRuntimeConfig,
   saveCredentials,
   saveSelectedService
 } from "./api";
-import { CommandeScreen } from "./screens/BarScreen";
 import { BikeCounterScreen } from "./screens/BikeCounterScreen";
+import { CommandeScreen } from "./screens/BarScreen";
 import { CuisineScreen } from "./screens/CuisineScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { AppService, Commande } from "./types";
@@ -229,22 +231,54 @@ export function App() {
   const lockedPath = getServicePath(activeService);
 
   return (
-    <Box sx={{ minHeight: "100vh", background: "linear-gradient(180deg, #f7f2ea 0%, #efe4d4 100%)" }}>
+    <Box sx={{ minHeight: "100vh" }}>
       <AppBar position="sticky" color="transparent" elevation={0}>
-        <Toolbar sx={{ gap: 2, backdropFilter: "blur(8px)" }}>
-          <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 800 }}>
-            {serviceMeta.applicationName}
-          </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {serviceMeta.screenLabel}
-          </Typography>
-          <Button variant="outlined" color="inherit" onClick={handleLogout}>
+        <Toolbar
+          sx={{
+            gap: 2,
+            px: { xs: 2, md: 4 },
+            py: 2,
+            backdropFilter: "blur(18px)"
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: "14px",
+                display: "grid",
+                placeItems: "center",
+                color: "primary.main",
+                background: "linear-gradient(180deg, rgba(244,138,31,0.18), rgba(244,138,31,0.08))",
+                border: "1px solid rgba(244,138,31,0.24)"
+              }}
+            >
+              <LocalPizzaRoundedIcon />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {serviceMeta.applicationName}
+              </Typography>
+              <Typography color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                Interface de service
+              </Typography>
+            </Box>
+          </Stack>
+          <Chip label={serviceMeta.screenLabel} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
+          <Button variant="outlined" color="inherit" onClick={handleLogout} sx={{ flexShrink: 0 }}>
             Changer de service
           </Button>
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Container
+        maxWidth="xl"
+        sx={{
+          py: { xs: 3, md: 4 },
+          px: { xs: 2, sm: 3, md: 4 }
+        }}
+      >
         <Routes>
           <Route path="/" element={<Navigate to={lockedPath} replace />} />
           <Route
@@ -280,10 +314,7 @@ export function App() {
             path="/bike"
             element={
               activeService === "bike-counter" ? (
-                <BikeCounterScreen
-                  totalCount={bikePolling.totalCount}
-                  error={bikePolling.error}
-                />
+                <BikeCounterScreen totalCount={bikePolling.totalCount} error={bikePolling.error} />
               ) : (
                 <Navigate to={lockedPath} replace />
               )
