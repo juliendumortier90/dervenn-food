@@ -35,7 +35,6 @@ const char *BIKE_AUTH_HEADER = "Basic Zm9vZDpwZXBkZXV4";
 const uint16_t BIKE_HTTPS_PORT = 443;
 const uint16_t DIGIT_UDP_PORT = 4210;
 const uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
-const uint32_t REMOTE_POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 const uint16_t HTTP_TIMEOUT_MS = 10000;
 const uint32_t SERIAL_WAIT_MS = 3000;
 const uint32_t RESET_SESSION_HOLD_MS = 10000;
@@ -89,7 +88,6 @@ void initWatchdog() {
 int totalCount = 0;
 int sessionCount = 0;
 unsigned long lastWiFiConnectAttempt = 0;
-unsigned long lastRemotePollTime = 0;
 unsigned long buttonPressStart = 0;
 bool lastButtonState = HIGH;
 bool udpStarted = false;
@@ -370,6 +368,12 @@ void handleUdpPackets() {
     String payload = String(packetBuffer);
     payload.trim();
 
+    if (payload == "SYNC") {
+      Serial.println("UDP resynchronisation recue.");
+      fetchRemoteCounts();
+      continue;
+    }
+
     if (!payload.startsWith("BIKE:")) {
       continue;
     }
@@ -496,15 +500,6 @@ bool resetSessionOnServer() {
 
   applyRemoteCounts(remoteTotalCount, remoteSessionCount);
   return true;
-}
-
-void handleRemotePolling(uint32_t now) {
-  if (now - lastRemotePollTime < REMOTE_POLL_INTERVAL_MS) {
-    return;
-  }
-
-  lastRemotePollTime = now;
-  fetchRemoteCounts();
 }
 
 uint16_t baseLedIndexForDigit(uint8_t digitIndex) {
@@ -694,7 +689,6 @@ void setup() {
 
   connectToWiFi();
   fetchRemoteCounts();
-  lastRemotePollTime = millis();
 
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS);
   FastLED.setBrightness(255);
@@ -712,7 +706,6 @@ void loop() {
   refreshWatchdog();
   ensureWiFiConnected(now);
   handleUdpPackets();
-  handleRemotePolling(now);
   handleButton(now);
   updateDisplay(now);
   refreshWatchdog();

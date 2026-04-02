@@ -1,7 +1,7 @@
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
 import type { ChangeEvent, FormEvent } from "react";
-import { Alert, Box, Button, Card, Chip, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, Stack, TextField, Typography } from "@mui/material";
 import { AppService } from "../types";
 
 interface LoginScreenProps {
@@ -152,10 +152,6 @@ export function LoginScreen({
                   </Box>
                 )
               )}
-            </Stack>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip label="Theme sombre" color="primary" variant="outlined" />
-              <Chip label="Acces separe par service" variant="outlined" />
             </Stack>
           </Stack>
 

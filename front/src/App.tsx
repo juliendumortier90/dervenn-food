@@ -9,7 +9,7 @@ import {
   Toolbar,
   Typography
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   clearCredentials,
@@ -116,6 +116,9 @@ function useBikeStatsPolling(
   const [statsError, setStatsError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const handleAuthenticationInvalid = useEffectEvent(() => {
+    onAuthenticationInvalid();
+  });
 
   function replaceStats(value: BikeCounterStats): void {
     setStats(value);
@@ -133,7 +136,7 @@ function useBikeStatsPolling(
       const message = err instanceof Error ? err.message : "Erreur inconnue";
       setStatsError(message);
       if (message === "Authentification invalide") {
-        onAuthenticationInvalid();
+        handleAuthenticationInvalid();
       }
       throw err;
     }
@@ -155,7 +158,7 @@ function useBikeStatsPolling(
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [enabled]);
+  }, [enabled, historyEnabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -179,7 +182,7 @@ function useBikeStatsPolling(
           setHistoryError(message);
         }
         if (message === "Authentification invalide") {
-          onAuthenticationInvalid();
+          handleAuthenticationInvalid();
         }
       } finally {
         if (isMounted) {
@@ -197,7 +200,7 @@ function useBikeStatsPolling(
       isMounted = false;
       window.clearInterval(interval);
     };
-  }, [enabled, historyEnabled, onAuthenticationInvalid, selectedRange]);
+  }, [enabled, historyEnabled, selectedRange]);
 
   return {
     error: [statsError, historyEnabled ? historyError : ""].filter(Boolean).join(" • "),
