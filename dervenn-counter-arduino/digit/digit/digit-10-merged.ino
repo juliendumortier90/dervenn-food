@@ -1,6 +1,7 @@
 #include <WiFiS3.h>
 #include <WiFiSSLClient.h>
 #include <WiFiUdp.h>
+#include <WDT.h>
 
 #if !defined(ARDUINO_UNOR4_WIFI)
 #error "Ce sketch est prevu uniquement pour Arduino UNO R4 WiFi."
@@ -25,22 +26,22 @@ const uint32_t ANIM_INTERVAL_MS = 60UL * 1000UL * 5UL;
 const uint16_t ANIM_MS = 8000;
 const bool BOTTOM_ROW_REVERSED = true;
 
-const char *WIFI_SSID = "AndroidAP";
-const char *WIFI_PASSWORD = "totototo";
+const char *WIFI_SSID = "androidap";
+const char *WIFI_PASSWORD = "n4l6c21u$76!.";
 const char *BIKE_HTTP_HOST = "n4l6c21u76.execute-api.eu-west-3.amazonaws.com";
 const char *BIKE_STATS_GET_PATH = "/prod/bike/stats";
 const char *BIKE_RESET_SESSION_POST_PATH = "/prod/bike/resetsession";
 const char *BIKE_AUTH_HEADER = "Basic Zm9vZDpwZXBkZXV4";
 const uint16_t BIKE_HTTPS_PORT = 443;
 const uint16_t DIGIT_UDP_PORT = 4210;
-const uint16_t COUNTER_UDP_PORT = 4211;
 const uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
 const uint32_t REMOTE_POLL_INTERVAL_MS = 5UL * 60UL * 1000UL;
 const uint16_t HTTP_TIMEOUT_MS = 10000;
 const uint32_t SERIAL_WAIT_MS = 3000;
 const uint32_t RESET_SESSION_HOLD_MS = 10000;
 const uint16_t BUTTON_BLINK_MS = 250;
-const uint16_t RESET_UDP_TIMEOUT_MS = 2000;
+const uint16_t DHCP_WAIT_MS = 10000;
+const uint32_t WATCHDOG_TIMEOUT_MS = 4000;
 
 const uint8_t segmentMapTop[SEGMENTS_PER_DIGIT] = {1, 2, 6, 5, 4, 0, 3};
 const uint8_t segmentMapBottom[SEGMENTS_PER_DIGIT] = {1, 0, 4, 5, 6, 2, 3};
@@ -65,6 +66,25 @@ const uint8_t MODE_ANIM = 1;
 CRGB leds[NUM_LEDS];
 WiFiUDP udp;
 using SecureClient = WiFiSSLClient;
+bool watchdogReady = false;
+
+void refreshWatchdog() {
+  if (watchdogReady) {
+    WDT.refresh();
+  }
+}
+
+void initWatchdog() {
+  if (WDT.begin(WATCHDOG_TIMEOUT_MS)) {
+    watchdogReady = true;
+    Serial.print("Watchdog actif: ");
+    Serial.print(WDT.getTimeout());
+    Serial.println(" ms");
+    refreshWatchdog();
+  } else {
+    Serial.println("Echec d'initialisation du watchdog.");
+  }
+}
 
 int totalCount = 0;
 int sessionCount = 0;
@@ -94,6 +114,7 @@ void beginSerial() {
 bool waitForClientData(SecureClient &client, uint32_t timeoutMs) {
   unsigned long start = millis();
   while (!client.available() && client.connected() && millis() - start < timeoutMs) {
+    refreshWatchdog();
     delay(10);
   }
 
@@ -138,12 +159,14 @@ bool readHttpResponse(SecureClient &client, int &statusCode, String &body) {
     while (client.available()) {
       body += (char)client.read();
       lastDataAt = millis();
+      refreshWatchdog();
     }
 
     if (millis() - lastDataAt > HTTP_TIMEOUT_MS) {
       break;
     }
 
+    refreshWatchdog();
     delay(10);
   }
 
@@ -217,16 +240,24 @@ bool parseStatsPayload(const String &payload, long &remoteTotalCount, long &remo
   return true;
 }
 
-IPAddress computeBroadcastAddress() {
+bool hasValidLocalIp() {
   IPAddress ip = WiFi.localIP();
-  IPAddress mask = WiFi.subnetMask();
-  IPAddress broadcast;
+  return ip[0] != 0 || ip[1] != 0 || ip[2] != 0 || ip[3] != 0;
+}
 
-  for (uint8_t index = 0; index < 4; index++) {
-    broadcast[index] = (uint8_t)(ip[index] | (uint8_t)(~mask[index]));
+bool waitForLocalIp(uint32_t timeoutMs) {
+  unsigned long startedAt = millis();
+
+  while (millis() - startedAt < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED && hasValidLocalIp()) {
+      return true;
+    }
+
+    refreshWatchdog();
+    delay(50);
   }
 
-  return broadcast;
+  return hasValidLocalIp();
 }
 
 void startUdpListener() {
@@ -259,27 +290,40 @@ void connectToWiFi() {
     Serial.println("Firmware WiFi a mettre a jour.");
   }
 
+  WiFi.disconnect();
+  refreshWatchdog();
+  delay(100);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   uint8_t attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    refreshWatchdog();
     delay(500);
     Serial.print(".");
     attempts++;
   }
   Serial.println();
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED && waitForLocalIp(DHCP_WAIT_MS)) {
     Serial.print("WiFi connecte, IP=");
     Serial.println(WiFi.localIP());
     startUdpListener();
+  } else if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi connecte mais IP DHCP indisponible.");
   } else {
     Serial.println("Connexion WiFi impossible, nouvel essai plus tard.");
   }
 }
 
+bool isWiFiReady() {
+  return WiFi.status() == WL_CONNECTED && hasValidLocalIp();
+}
+
 void ensureWiFiConnected(uint32_t now) {
-  if (WiFi.status() == WL_CONNECTED) {
+  if (isWiFiReady()) {
+    if (!udpStarted) {
+      startUdpListener();
+    }
     return;
   }
 
@@ -289,6 +333,7 @@ void ensureWiFiConnected(uint32_t now) {
     return;
   }
 
+  Serial.println("WiFi perdu ou incomplet, nouvelle tentative de connexion.");
   connectToWiFi();
 }
 
@@ -310,6 +355,7 @@ void handleUdpPackets() {
   char packetBuffer[64];
 
   while (true) {
+    refreshWatchdog();
     int packetSize = udp.parsePacket();
     if (!packetSize) {
       return;
@@ -345,66 +391,8 @@ void handleUdpPackets() {
   }
 }
 
-bool requestCounterFlushBeforeReset() {
-  if (WiFi.status() != WL_CONNECTED || !udpStarted) {
-    Serial.println("Reset session: coordination UDP indisponible.");
-    return false;
-  }
-
-  IPAddress broadcastIp = computeBroadcastAddress();
-  if (!udp.beginPacket(broadcastIp, COUNTER_UDP_PORT)) {
-    Serial.println("Reset session: impossible d'envoyer la demande UDP.");
-    return false;
-  }
-
-  udp.print("RESET_SESSION_FLUSH");
-  udp.endPacket();
-
-  unsigned long startedAt = millis();
-  char packetBuffer[64];
-
-  while (millis() - startedAt < RESET_UDP_TIMEOUT_MS) {
-    int packetSize = udp.parsePacket();
-    if (!packetSize) {
-      delay(10);
-      continue;
-    }
-
-    int len = udp.read(packetBuffer, sizeof(packetBuffer) - 1);
-    if (len <= 0) {
-      continue;
-    }
-
-    packetBuffer[len] = '\0';
-    String payload = String(packetBuffer);
-    payload.trim();
-
-    if (payload.startsWith("BIKE:")) {
-      int increment = payload.substring(5).toInt();
-      if (increment > 0) {
-        totalCount = clampCounterValue((long)totalCount + increment);
-        sessionCount = clampCounterValue((long)sessionCount + increment);
-      }
-      continue;
-    }
-
-    if (payload == "RESET_SESSION_READY") {
-      Serial.println("Reset session: counter pret.");
-      return true;
-    }
-
-    if (payload == "RESET_SESSION_FAILED") {
-      Serial.println("Reset session: flush counter impossible.");
-      return false;
-    }
-  }
-
-  Serial.println("Reset session: timeout de coordination UDP.");
-  return false;
-}
-
 void fetchRemoteCounts() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!isWiFiReady()) {
     Serial.println("GET /prod/bike/stats ignore: WiFi non connecte.");
     return;
   }
@@ -459,7 +447,7 @@ void fetchRemoteCounts() {
 }
 
 bool resetSessionOnServer() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!isWiFiReady()) {
     Serial.println("POST /prod/bike/resetsession ignore: WiFi non connecte.");
     return false;
   }
@@ -687,7 +675,7 @@ void handleButton(uint32_t now) {
     uint32_t pressDuration = now - buttonPressStart;
     if (pressDuration >= RESET_SESSION_HOLD_MS) {
       Serial.println("Relachement -> reset session distant.");
-      if (requestCounterFlushBeforeReset() && resetSessionOnServer()) {
+      if (resetSessionOnServer()) {
         mode = MODE_COUNT;
         lastAnimTriggerMs = now;
       }
@@ -700,6 +688,7 @@ void handleButton(uint32_t now) {
 void setup() {
   beginSerial();
   Serial.println("=== Afficheur compteur WiFi pret ===");
+  initWatchdog();
 
   pinMode(PIN_REMOTE_RESET_BUTTON, INPUT_PULLUP);
 
@@ -720,9 +709,11 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
+  refreshWatchdog();
   ensureWiFiConnected(now);
   handleUdpPackets();
   handleRemotePolling(now);
   handleButton(now);
   updateDisplay(now);
+  refreshWatchdog();
 }
