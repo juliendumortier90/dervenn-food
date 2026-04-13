@@ -17,6 +17,7 @@ import {
   getBikeCounterHistory,
   getBikeCounterStats,
   getCommandes,
+  getPlanningEditions,
   getSelectedService,
   hasCredentials,
   loadRuntimeConfig,
@@ -28,6 +29,9 @@ import { BikeCounterAnalyticsScreen } from "./screens/BikeCounterAnalyticsScreen
 import { CommandeScreen } from "./screens/BarScreen";
 import { CuisineScreen } from "./screens/CuisineScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { PlanningScreen } from "./screens/PlanningScreen";
+import { ServiceSelectionScreen } from "./screens/ServiceSelectionScreen";
+import { getServiceMeta, getServicePath } from "./services";
 import { AppService, BikeCounterHistory, BikeCounterStats, BikeHistoryRange, Commande } from "./types";
 
 function useFoodPolling(
@@ -216,18 +220,20 @@ function useBikeStatsPolling(
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const initialSelectedService = getSelectedService();
+  const storedSelectedService = getSelectedService();
+  const initialSelectedService = hasCredentials() ? storedSelectedService : null;
   const [isAuthenticated, setIsAuthenticated] = useState(hasCredentials() && Boolean(initialSelectedService));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedService, setSelectedService] = useState<AppService>(initialSelectedService ?? "bike-counter");
+  const [selectedService, setSelectedService] = useState<AppService | null>(initialSelectedService);
   const [loginError, setLoginError] = useState("");
   const [configReady, setConfigReady] = useState(false);
   const [activeService, setActiveService] = useState<AppService | null>(initialSelectedService);
 
-  function resetAuthenticationState(): void {
+  function resetAuthenticationState(nextSelectedService: AppService | null = selectedService): void {
     setIsAuthenticated(false);
     setActiveService(null);
+    setSelectedService(nextSelectedService);
     setPassword("");
   }
 
@@ -257,6 +263,11 @@ export function App() {
   }, []);
 
   async function handleLogin(): Promise<void> {
+    if (!selectedService) {
+      navigate("/", { replace: true });
+      return;
+    }
+
     try {
       saveCredentials(username, password);
       saveSelectedService(selectedService);
@@ -264,6 +275,8 @@ export function App() {
       if (selectedService === "bike-counter") {
         const stats = await getBikeCounterStats();
         bikePolling.replaceStats(stats);
+      } else if (selectedService === "planning-public" || selectedService === "planning-admin") {
+        await getPlanningEditions(selectedService === "planning-admin");
       } else {
         foodPolling.replaceCommandes(await getCommandes());
       }
@@ -281,23 +294,60 @@ export function App() {
 
   function handleLogout(): void {
     clearCredentials();
-    resetAuthenticationState();
+    resetAuthenticationState(null);
+    setLoginError("");
+    navigate("/", { replace: true });
+  }
+
+  function handleServiceSelection(service: AppService): void {
+    setSelectedService(service);
+    setLoginError("");
+    setPassword("");
+    navigate("/connexion");
+  }
+
+  function handleBackToServices(): void {
+    setSelectedService(null);
+    setLoginError("");
+    setPassword("");
+    navigate("/", { replace: true });
   }
 
   if (!isAuthenticated || !activeService) {
     return (
-      <LoginScreen
-        apiConfigured={Boolean(getApiBaseUrl())}
-        configReady={configReady}
-        error={loginError}
-        onPasswordChange={setPassword}
-        onSelectedServiceChange={setSelectedService}
-        onSubmit={handleLogin}
-        onUsernameChange={setUsername}
-        password={password}
-        selectedService={selectedService}
-        username={username}
-      />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ServiceSelectionScreen
+              onSelectService={handleServiceSelection}
+              selectedService={selectedService}
+            />
+          }
+        />
+        <Route
+          path="/connexion"
+          element={
+            selectedService ? (
+              <LoginScreen
+                apiConfigured={Boolean(getApiBaseUrl())}
+                configReady={configReady}
+                error={loginError}
+                onBack={handleBackToServices}
+                onPasswordChange={setPassword}
+                onSubmit={handleLogin}
+                onUsernameChange={setUsername}
+                password={password}
+                selectedService={selectedService}
+                username={username}
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to={selectedService ? "/connexion" : "/"} replace />} />
+      </Routes>
     );
   }
 
@@ -427,42 +477,29 @@ export function App() {
               )
             }
           />
+          <Route
+            path="/planning"
+            element={
+              activeService === "planning-public" ? (
+                <PlanningScreen adminMode={false} onAuthenticationInvalid={() => resetAuthenticationState(null)} />
+              ) : (
+                <Navigate to={lockedPath} replace />
+              )
+            }
+          />
+          <Route
+            path="/planning-admin"
+            element={
+              activeService === "planning-admin" ? (
+                <PlanningScreen adminMode={true} onAuthenticationInvalid={() => resetAuthenticationState(null)} />
+              ) : (
+                <Navigate to={lockedPath} replace />
+              )
+            }
+          />
           <Route path="*" element={<Navigate to={lockedPath} replace />} />
         </Routes>
       </Container>
     </Box>
   );
-}
-
-function getServicePath(service: AppService): string {
-  if (service === "food-commande") {
-    return "/commande";
-  }
-
-  if (service === "food-cuisine") {
-    return "/cuisine";
-  }
-
-  return "/bike";
-}
-
-function getServiceMeta(service: AppService): { applicationName: string; screenLabel: string } {
-  if (service === "food-commande") {
-    return {
-      applicationName: "Dervenn Food",
-      screenLabel: "Commande"
-    };
-  }
-
-  if (service === "food-cuisine") {
-    return {
-      applicationName: "Dervenn Food",
-      screenLabel: "Cuisine"
-    };
-  }
-
-  return {
-    applicationName: "Dervenn Bike",
-    screenLabel: "Statistiques"
-  };
 }

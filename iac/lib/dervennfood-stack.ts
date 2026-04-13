@@ -16,13 +16,13 @@ export class DervennFoodStack extends Stack {
     super(scope, id, props);
 
     const basicAuthUsername = process.env.DERVENN_BASIC_AUTH_USERNAME;
-    const foodBasicAuthPassword = process.env.DERVENN_FOOD_BASIC_AUTH_PASSWORD;
-    const bikeBasicAuthPassword = process.env.DERVENN_BIKE_BASIC_AUTH_PASSWORD;
+    const publicBasicAuthPassword = process.env.DERVENN_PUBLIC_BASIC_AUTH_PASSWORD;
+    const adminBasicAuthPassword = process.env.DERVENN_ADMIN_BASIC_AUTH_PASSWORD;
     const allowedOrigin = process.env.DERVENN_ALLOWED_ORIGIN ?? "*";
 
-    if (!basicAuthUsername || !foodBasicAuthPassword || !bikeBasicAuthPassword) {
+    if (!basicAuthUsername || !publicBasicAuthPassword || !adminBasicAuthPassword) {
       throw new Error(
-        "DERVENN_BASIC_AUTH_USERNAME, DERVENN_FOOD_BASIC_AUTH_PASSWORD and DERVENN_BIKE_BASIC_AUTH_PASSWORD are required"
+        "DERVENN_BASIC_AUTH_USERNAME, DERVENN_PUBLIC_BASIC_AUTH_PASSWORD and DERVENN_ADMIN_BASIC_AUTH_PASSWORD are required"
       );
     }
 
@@ -47,6 +47,14 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
+    const planningTable = new dynamodb.Table(this, "DervennPlanningTable", {
+      tableName: "dervenn-planning",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
     const foodLambdaEnvironment = {
       TABLE_NAME: commandesTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
@@ -55,6 +63,11 @@ export class DervennFoodStack extends Stack {
     const bikeLambdaEnvironment = {
       BIKE_EVENTS_TABLE_NAME: bikeEventsTable.tableName,
       BIKE_STATS_TABLE_NAME: bikeStatsTable.tableName,
+      ALLOWED_ORIGIN: allowedOrigin
+    };
+
+    const planningLambdaEnvironment = {
+      PLANNING_TABLE_NAME: planningTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
     };
 
@@ -80,19 +93,26 @@ export class DervennFoodStack extends Stack {
       environment: bikeLambdaEnvironment
     });
 
+    const planningFunction = new lambdaNodejs.NodejsFunction(this, "PlanningFunction", {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, "../../back/src/handlers/planning.ts"),
+      environment: planningLambdaEnvironment
+    });
+
     const basicAuthAuthorizer = new lambdaNodejs.NodejsFunction(this, "BasicAuthAuthorizerFunction", {
       ...lambdaDefaults,
       entry: path.join(__dirname, "../../back/src/handlers/basicAuthAuthorizer.ts"),
       environment: {
         BASIC_AUTH_USERNAME: basicAuthUsername,
-        FOOD_BASIC_AUTH_PASSWORD: foodBasicAuthPassword,
-        BIKE_BASIC_AUTH_PASSWORD: bikeBasicAuthPassword
+        PUBLIC_BASIC_AUTH_PASSWORD: publicBasicAuthPassword,
+        ADMIN_BASIC_AUTH_PASSWORD: adminBasicAuthPassword
       }
     });
 
     commandesTable.grantReadWriteData(commandesFunction);
     bikeEventsTable.grantReadWriteData(bikeCounterFunction);
     bikeStatsTable.grantReadWriteData(bikeCounterFunction);
+    planningTable.grantReadWriteData(planningFunction);
 
     const api = new apigateway.RestApi(this, "DervennApi", {
       restApiName: "Dervenn API",
@@ -146,6 +166,40 @@ export class DervennFoodStack extends Stack {
 
     const bikeResetSessionResource = bikeResource.addResource("resetsession");
     bikeResetSessionResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const planningResource = api.root.addResource("planning");
+    const planningEditionsResource = planningResource.addResource("editions");
+    planningEditionsResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const planningEditionItemResource = planningEditionsResource.addResource("{editionId}");
+    planningEditionItemResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const planningAdminResource = planningResource.addResource("admin");
+    const planningAdminEditionsResource = planningAdminResource.addResource("editions");
+    planningAdminEditionsResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+    planningAdminEditionsResource.addMethod("POST", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const planningAdminEditionItemResource = planningAdminEditionsResource.addResource("{editionId}");
+    planningAdminEditionItemResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+    planningAdminEditionItemResource.addMethod("POST", new apigateway.LambdaIntegration(planningFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });

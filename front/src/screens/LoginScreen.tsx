@@ -1,15 +1,17 @@
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
 import type { ChangeEvent, FormEvent } from "react";
 import { Alert, Box, Button, Card, Stack, TextField, Typography } from "@mui/material";
 import { AppService } from "../types";
+import { getServiceMeta } from "../services";
 
 interface LoginScreenProps {
   apiConfigured: boolean;
   configReady: boolean;
   error: string;
+  onBack: () => void;
   onPasswordChange: (value: string) => void;
-  onSelectedServiceChange: (service: AppService) => void;
   onSubmit: () => void;
   onUsernameChange: (value: string) => void;
   password: string;
@@ -17,33 +19,20 @@ interface LoginScreenProps {
   username: string;
 }
 
-const serviceLabels: Record<AppService, { title: string; description: string }> = {
-  "food-commande": {
-    title: "Commande",
-    description: "Creer et suivre les tickets depuis le poste de prise de commande."
-  },
-  "food-cuisine": {
-    title: "Cuisine",
-    description: "Piloter la file de preparation et faire avancer les statuts."
-  },
-  "bike-counter": {
-    title: "Counter",
-    description: "Consulter les statistiques du compteur velo securisees par un mot de passe dedie."
-  }
-};
-
 export function LoginScreen({
   apiConfigured,
   configReady,
   error,
+  onBack,
   onPasswordChange,
-  onSelectedServiceChange,
   onSubmit,
   onUsernameChange,
   password,
   selectedService,
   username
 }: LoginScreenProps) {
+  const serviceMeta = getServiceMeta(selectedService);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     void onSubmit();
@@ -65,8 +54,8 @@ export function LoginScreen({
       <Card
         sx={{
           width: "100%",
-          maxWidth: 980,
-          p: { xs: 2, md: 2.5 },
+          maxWidth: 560,
+          p: { xs: 2, md: 2.75 },
           overflow: "hidden"
         }}
       >
@@ -75,12 +64,11 @@ export function LoginScreen({
           onSubmit={handleSubmit}
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1.05fr) minmax(320px, 0.95fr)" },
-            gap: { xs: 2, md: 3 }
+            gap: { xs: 2, md: 2.5 }
           }}
         >
           <Stack
-            spacing={2.5}
+            spacing={2}
             sx={{
               p: { xs: 2.25, md: 2.5 },
               borderRadius: 3,
@@ -89,6 +77,24 @@ export function LoginScreen({
               border: "1px solid rgba(158, 176, 214, 0.12)"
             }}
           >
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+              <Box>
+                <Typography variant="overline" sx={{ letterSpacing: "0.2em", color: "primary.main" }}>
+                  Etape 2/2
+                </Typography>
+                <Typography variant="h4">Connexion</Typography>
+              </Box>
+              <Button
+                type="button"
+                variant="outlined"
+                color="inherit"
+                onClick={onBack}
+                startIcon={<ArrowBackRoundedIcon />}
+                sx={{ flexShrink: 0 }}
+              >
+                Services
+              </Button>
+            </Stack>
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Box
                 sx={{
@@ -104,54 +110,10 @@ export function LoginScreen({
               >
                 <LocalPizzaRoundedIcon />
               </Box>
-              <Box>
-                <Typography variant="overline" sx={{ letterSpacing: "0.2em", color: "primary.main" }}>
-                  Acces services
-                </Typography>
-                <Typography variant="h4">Choisir le service</Typography>
-              </Box>
-            </Stack>
-            <Typography color="text.secondary">
-              Selectionner l&apos;interface a ouvrir puis utiliser l&apos;identifiant commun avec le mot de passe
-              associe au service choisi.
-            </Typography>
-            <Stack spacing={1.25}>
-              {(Object.entries(serviceLabels) as [AppService, (typeof serviceLabels)[AppService]][]).map(
-                ([service, details]) => (
-                  <Box
-                    key={service}
-                    component="button"
-                    type="button"
-                    onClick={() => onSelectedServiceChange(service)}
-                    sx={{
-                      width: "100%",
-                      textAlign: "left",
-                      p: 2.25,
-                      color: "text.primary",
-                      borderRadius: 2.5,
-                      border: "1px solid",
-                      borderColor: selectedService === service ? "primary.main" : "rgba(126, 148, 190, 0.16)",
-                      background:
-                        selectedService === service
-                          ? "linear-gradient(135deg, rgba(244,138,31,0.2), rgba(12,20,37,0.94))"
-                          : "rgba(11,18,33,0.72)",
-                      cursor: "pointer",
-                      transition: "border-color 0.2s ease, transform 0.2s ease",
-                      "&:hover": {
-                        transform: "translateY(-1px)",
-                        borderColor: "rgba(244,138,31,0.48)"
-                      }
-                    }}
-                  >
-                    <Stack spacing={0.75}>
-                      <Typography variant="h6" sx={{ color: "common.white", fontWeight: 700 }}>
-                        {details.title}
-                      </Typography>
-                      <Typography color="text.secondary">{details.description}</Typography>
-                    </Stack>
-                  </Box>
-                )
-              )}
+              <Stack spacing={0.25}>
+                <Typography variant="h6">{serviceMeta.title}</Typography>
+                <Typography color="text.secondary">{serviceMeta.description}</Typography>
+              </Stack>
             </Stack>
           </Stack>
 
@@ -181,7 +143,7 @@ export function LoginScreen({
               </Box>
               <Box>
                 <Typography variant="h5">Connexion</Typography>
-                <Typography color="text.secondary">Authentification rapide et simple</Typography>
+                <Typography color="text.secondary">Utiliser les identifiants du service choisi</Typography>
               </Box>
             </Stack>
             <TextField
@@ -205,7 +167,7 @@ export function LoginScreen({
               </Alert>
             ) : null}
             <Button type="submit" variant="contained" size="large" disabled={!configReady || !apiConfigured}>
-              Ouvrir le service
+              Se connecter
             </Button>
           </Stack>
         </Box>

@@ -5,12 +5,12 @@ import {
 } from "aws-lambda";
 
 const expectedUsername = process.env.BASIC_AUTH_USERNAME;
-const expectedFoodPassword = process.env.FOOD_BASIC_AUTH_PASSWORD;
-const expectedBikePassword = process.env.BIKE_BASIC_AUTH_PASSWORD;
+const expectedPublicPassword = process.env.PUBLIC_BASIC_AUTH_PASSWORD;
+const expectedAdminPassword = process.env.ADMIN_BASIC_AUTH_PASSWORD;
 
-if (!expectedUsername || !expectedFoodPassword || !expectedBikePassword) {
+if (!expectedUsername || !expectedPublicPassword || !expectedAdminPassword) {
   throw new Error(
-    "Missing BASIC_AUTH_USERNAME, FOOD_BASIC_AUTH_PASSWORD or BIKE_BASIC_AUTH_PASSWORD"
+    "Missing BASIC_AUTH_USERNAME, PUBLIC_BASIC_AUTH_PASSWORD or ADMIN_BASIC_AUTH_PASSWORD"
   );
 }
 
@@ -64,12 +64,20 @@ function extractPath(event: APIGatewayRequestAuthorizerEvent): string {
 }
 
 function expectedPasswordForPath(path: string): string | null {
+  if (path.startsWith("/planning/admin")) {
+    return expectedAdminPassword ?? null;
+  }
+
   if (path.startsWith("/bike")) {
-    return expectedBikePassword ?? null;
+    return expectedAdminPassword ?? null;
+  }
+
+  if (path.startsWith("/planning")) {
+    return expectedPublicPassword ?? null;
   }
 
   if (path.startsWith("/commandes")) {
-    return expectedFoodPassword ?? null;
+    return expectedPublicPassword ?? null;
   }
 
   return null;

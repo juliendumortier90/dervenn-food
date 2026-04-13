@@ -5,7 +5,12 @@ import {
   BikeHistoryRange,
   BikeCounterStats,
   Commande,
-  CommandeStatus
+  CommandeStatus,
+  PlanningAffectation,
+  PlanningBenevole,
+  PlanningCategorie,
+  PlanningEdition,
+  PlanningEditionSummary
 } from "./types";
 
 const storageKey = "dervenn-basic-auth";
@@ -50,7 +55,13 @@ export function saveSelectedService(service: AppService): void {
 
 export function getSelectedService(): AppService | null {
   const value = window.sessionStorage.getItem(serviceKey);
-  return value === "food-commande" || value === "food-cuisine" || value === "bike-counter" ? value : null;
+  return value === "food-commande" ||
+    value === "food-cuisine" ||
+    value === "planning-public" ||
+    value === "planning-admin" ||
+    value === "bike-counter"
+    ? value
+    : null;
 }
 
 function getAuthorizationHeader(): string {
@@ -140,4 +151,138 @@ export async function getBikeCounterStats(): Promise<BikeCounterStats> {
 export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
   const data = await apiFetch<{ history: BikeCounterHistory }>(`/bike/history?range=${encodeURIComponent(range)}`);
   return data.history;
+}
+
+function getPlanningBasePath(adminMode: boolean): string {
+  return adminMode ? "/planning/admin" : "/planning";
+}
+
+export async function getPlanningEditions(adminMode: boolean): Promise<PlanningEditionSummary[]> {
+  const data = await apiFetch<{ editions: PlanningEditionSummary[] }>(`${getPlanningBasePath(adminMode)}/editions`);
+  return data.editions;
+}
+
+export async function getPlanningEdition(editionId: string, adminMode: boolean): Promise<PlanningEdition> {
+  const data = await apiFetch<{ edition: PlanningEdition }>(
+    `${getPlanningBasePath(adminMode)}/editions/${encodeURIComponent(editionId)}`
+  );
+  return data.edition;
+}
+
+export async function createPlanningEdition(
+  title: string,
+  startAt: string,
+  endAt: string
+): Promise<PlanningEditionSummary> {
+  const data = await apiFetch<{ edition: PlanningEditionSummary }>("/planning/admin/editions", {
+    method: "POST",
+    body: JSON.stringify({ title, startAt, endAt })
+  });
+  return data.edition;
+}
+
+export async function updatePlanningEdition(
+  editionId: string,
+  title: string,
+  startAt: string,
+  endAt: string
+): Promise<PlanningEditionSummary> {
+  const data = await apiFetch<{ edition: PlanningEditionSummary }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "update-edition", title, startAt, endAt })
+    }
+  );
+  return data.edition;
+}
+
+export async function createPlanningBenevole(
+  editionId: string,
+  pseudo: string,
+  phone: string
+): Promise<PlanningBenevole> {
+  const data = await apiFetch<{ benevole: PlanningBenevole }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "create-benevole", pseudo, phone })
+    }
+  );
+  return data.benevole;
+}
+
+export async function updatePlanningBenevole(
+  editionId: string,
+  benevoleId: string,
+  pseudo: string,
+  phone: string
+): Promise<PlanningBenevole> {
+  const data = await apiFetch<{ benevole: PlanningBenevole }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "update-benevole", benevoleId, pseudo, phone })
+    }
+  );
+  return data.benevole;
+}
+
+export async function createPlanningCategorie(
+  editionId: string,
+  title: string,
+  color: string
+): Promise<PlanningCategorie> {
+  const data = await apiFetch<{ categorie: PlanningCategorie }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "create-categorie", title, color })
+    }
+  );
+  return data.categorie;
+}
+
+export async function updatePlanningCategorie(
+  editionId: string,
+  categorieId: string,
+  title: string,
+  color: string
+): Promise<PlanningCategorie> {
+  const data = await apiFetch<{ categorie: PlanningCategorie }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "update-categorie", categorieId, title, color })
+    }
+  );
+  return data.categorie;
+}
+
+export async function createPlanningAffectation(
+  editionId: string,
+  benevoleId: string,
+  categorieId: string,
+  startAt: string,
+  endAt: string,
+  comment?: string
+): Promise<PlanningAffectation> {
+  const data = await apiFetch<{ affectation: PlanningAffectation }>(
+    `/planning/admin/editions/${encodeURIComponent(editionId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action: "create-affectation", benevoleId, categorieId, startAt, endAt, comment })
+    }
+  );
+  return data.affectation;
+}
+
+export async function deletePlanningAffectation(
+  editionId: string,
+  affectationId: string
+): Promise<void> {
+  await apiFetch<{ affectation: PlanningAffectation }>(`/planning/admin/editions/${encodeURIComponent(editionId)}`, {
+    method: "POST",
+    body: JSON.stringify({ action: "delete-affectation", affectationId })
+  });
 }
