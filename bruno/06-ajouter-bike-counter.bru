@@ -1,0 +1,25 @@
+meta {
+  name: Ajouter des passages bike
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{api_url}}/bike/counter
+  body: text
+  auth: basic
+}
+
+headers {
+  Accept: application/json
+  Content-Type: text/plain
+}
+
+auth:basic {
+  username: {{dervenn_basic_auth_username}}
+  password: {{bike_basic_auth_password}}
+}
+
+body:text {
+  {{bike_count}}
+}
