@@ -72,6 +72,14 @@ function formatBucketLabel(bucket: BikeCounterHistoryBucket, range: BikeHistoryR
   }).format(start);
 }
 
+function formatActivityDayLabel(bucket: BikeCounterHistoryBucket): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long"
+  }).format(new Date(bucket.startAt));
+}
+
 function getRangeLabel(range: BikeHistoryRange): string {
   return RANGE_OPTIONS.find((option) => option.value === range)?.label ?? range;
 }
@@ -243,7 +251,10 @@ export function BikeCounterAnalyticsScreen({
   onRangeChange,
   selectedRange
 }: BikeCounterAnalyticsScreenProps) {
-  const tableRows = history ? [...history.buckets].reverse() : [];
+  const tableRows = history
+    ? [...(history.activityDays?.filter((bucket) => bucket.count > 0) ?? history.buckets.filter((bucket) => bucket.count > 0))]
+        .reverse()
+    : [];
 
   return (
     <Stack spacing={3.5}>
@@ -319,7 +330,7 @@ export function BikeCounterAnalyticsScreen({
             <Box sx={{ px: { xs: 3, md: 4 }, pt: { xs: 3, md: 4 }, pb: 2 }}>
               <Typography variant="h5">Tableau des passages</Typography>
               <Typography sx={{ color: "text.secondary" }}>
-                Detail par tranche sur {getRangeLabel(selectedRange).toLowerCase()}.
+                Detail par jour avec activite sur {getRangeLabel(selectedRange).toLowerCase()}.
               </Typography>
             </Box>
             <Divider />
@@ -327,7 +338,7 @@ export function BikeCounterAnalyticsScreen({
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Periode</TableCell>
+                    <TableCell>Jour</TableCell>
                     <TableCell align="right">Passages</TableCell>
                     <TableCell align="right">Part de la periode</TableCell>
                   </TableRow>
@@ -337,7 +348,7 @@ export function BikeCounterAnalyticsScreen({
                     const share = history?.totalCount ? Math.round((bucket.count / history.totalCount) * 100) : 0;
                     return (
                       <TableRow key={`${bucket.startAt}-${bucket.endAt}`} hover>
-                        <TableCell>{history ? formatBucketLabel(bucket, history.range) : "-"}</TableCell>
+                        <TableCell>{formatActivityDayLabel(bucket)}</TableCell>
                         <TableCell align="right">{numberFormatter.format(bucket.count)}</TableCell>
                         <TableCell align="right">{share}%</TableCell>
                       </TableRow>

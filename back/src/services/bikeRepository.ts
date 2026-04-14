@@ -183,6 +183,29 @@ function incrementMatchingBucket(buckets: BikeCounterHistoryBucket[], createdAt:
   }
 }
 
+function incrementActivityDay(activityDaysByStart: Map<string, BikeCounterHistoryBucket>, createdAt: string): void {
+  const createdAtDate = new Date(createdAt);
+
+  if (Number.isNaN(createdAtDate.getTime())) {
+    return;
+  }
+
+  const dayStart = startOfUtcDay(createdAtDate);
+  const startAt = dayStart.toISOString();
+  const existing = activityDaysByStart.get(startAt);
+
+  if (existing) {
+    existing.count += 1;
+    return;
+  }
+
+  activityDaysByStart.set(startAt, {
+    startAt,
+    endAt: addUtcDays(dayStart, 1).toISOString(),
+    count: 1
+  });
+}
+
 async function createBikeCounterEntries(count: number): Promise<BikeCounterEntry[]> {
   const createdAt = new Date().toISOString();
   const entries = Array.from({ length: count }, () => ({
@@ -251,6 +274,7 @@ export async function getBikeCounterStats(): Promise<BikeCounterStats> {
 export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
   const now = new Date();
   const buckets = buildHistoryBuckets(range, now);
+  const activityDaysByStart = new Map<string, BikeCounterHistoryBucket>();
   const firstBucket = buckets[0];
   const lastBucket = buckets[buckets.length - 1];
   let exclusiveStartKey: Record<string, unknown> | undefined;
@@ -275,6 +299,7 @@ export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<Bi
     for (const item of response.Items ?? []) {
       if (typeof item.createdAt === "string") {
         incrementMatchingBucket(buckets, item.createdAt);
+        incrementActivityDay(activityDaysByStart, item.createdAt);
       }
     }
 
@@ -288,7 +313,10 @@ export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<Bi
     to: lastBucket.endAt,
     totalCount: buckets.reduce((sum, bucket) => sum + bucket.count, 0),
     peakCount: buckets.reduce((peak, bucket) => Math.max(peak, bucket.count), 0),
-    buckets
+    buckets,
+    activityDays: Array.from(activityDaysByStart.values()).sort((left, right) =>
+      left.startAt.localeCompare(right.startAt)
+    )
   };
 }
 

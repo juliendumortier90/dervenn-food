@@ -32,4 +32,5 @@ export interface BikeCounterHistory {
   totalCount: number;
   peakCount: number;
   buckets: BikeCounterHistoryBucket[];
+  activityDays: BikeCounterHistoryBucket[];
 }
