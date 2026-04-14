@@ -47,6 +47,7 @@ import {
 interface PlanningScreenProps {
   adminMode: boolean;
   onAuthenticationInvalid: () => void;
+  onDetailViewChange?: (isDetailView: boolean) => void;
 }
 
 interface EditionFormState {
@@ -460,7 +461,7 @@ function buildTimelineRows(categories: PlanningCategorie[], affectations: Planni
   });
 }
 
-export function PlanningScreen({ adminMode, onAuthenticationInvalid }: PlanningScreenProps) {
+export function PlanningScreen({ adminMode, onAuthenticationInvalid, onDetailViewChange }: PlanningScreenProps) {
   const [editions, setEditions] = useState<PlanningEditionSummary[]>([]);
   const [activeEditionId, setActiveEditionId] = useState<string | null>(null);
   const [activeEdition, setActiveEdition] = useState<PlanningEdition | null>(null);
@@ -549,6 +550,14 @@ export function PlanningScreen({ adminMode, onAuthenticationInvalid }: PlanningS
 
     void loadEdition();
   }, [activeEditionId, adminMode, onAuthenticationInvalid]);
+
+  useEffect(() => {
+    onDetailViewChange?.(!adminMode && Boolean(activeEditionId));
+
+    return () => {
+      onDetailViewChange?.(false);
+    };
+  }, [activeEditionId, adminMode, onDetailViewChange]);
 
   async function refreshEditions(): Promise<void> {
     const nextEditions = await getPlanningEditions(adminMode);

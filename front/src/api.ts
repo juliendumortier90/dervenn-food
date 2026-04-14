@@ -15,6 +15,7 @@ import {
 
 const storageKey = "dervenn-basic-auth";
 const serviceKey = "dervenn-service";
+const DEFAULT_API_BASE_URL = "https://n4l6c21u76.execute-api.eu-west-3.amazonaws.com/prod";
 let runtimeApiBaseUrl = "";
 
 export async function loadRuntimeConfig(): Promise<void> {
@@ -33,7 +34,7 @@ export async function loadRuntimeConfig(): Promise<void> {
 
 export function getApiBaseUrl(): string {
   const configured = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
-  return configured || runtimeApiBaseUrl;
+  return configured || runtimeApiBaseUrl || DEFAULT_API_BASE_URL;
 }
 
 export function saveCredentials(username: string, password: string): void {

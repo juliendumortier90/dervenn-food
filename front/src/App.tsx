@@ -1,8 +1,11 @@
 import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import {
   AppBar,
   Box,
   Button,
+  Card,
+  CardContent,
   Chip,
   Container,
   Stack,
@@ -229,21 +232,24 @@ export function App() {
   const [loginError, setLoginError] = useState("");
   const [configReady, setConfigReady] = useState(false);
   const [activeService, setActiveService] = useState<AppService | null>(initialSelectedService);
+  const [isPlanningDetailView, setIsPlanningDetailView] = useState(false);
 
   function resetAuthenticationState(nextSelectedService: AppService | null = selectedService): void {
     setIsAuthenticated(false);
     setActiveService(null);
+    setIsPlanningDetailView(false);
     setSelectedService(nextSelectedService);
     setPassword("");
   }
 
   const foodPolling = useFoodPolling(
-    isAuthenticated && (activeService === "food-commande" || activeService === "food-cuisine"),
+    configReady && isAuthenticated && (activeService === "food-commande" || activeService === "food-cuisine"),
     resetAuthenticationState
   );
-  const bikeHistoryEnabled = isAuthenticated && activeService === "bike-counter" && location.pathname === "/bike/analyse";
+  const bikeHistoryEnabled =
+    configReady && isAuthenticated && activeService === "bike-counter" && location.pathname === "/bike/analyse";
   const bikePolling = useBikeStatsPolling(
-    isAuthenticated && activeService === "bike-counter",
+    configReady && isAuthenticated && activeService === "bike-counter",
     bikeHistoryEnabled,
     resetAuthenticationState
   );
@@ -251,11 +257,7 @@ export function App() {
   useEffect(() => {
     async function init(): Promise<void> {
       await loadRuntimeConfig();
-      if (!getApiBaseUrl()) {
-        setLoginError(
-          "URL API non configuree. En local, renseigner front/.env avec VITE_API_BASE_URL=https://...execute-api.../prod"
-        );
-      }
+      setLoginError("");
       setConfigReady(true);
     }
 
@@ -351,67 +353,88 @@ export function App() {
     );
   }
 
+  if (!configReady) {
+    return (
+      <Box sx={{ minHeight: "100vh", px: { xs: 2, md: 4 }, py: { xs: 3, md: 5 } }}>
+        <Card>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h5">Chargement de la configuration...</Typography>
+            <Typography color="text.secondary">
+              Recuperation de la configuration API avant ouverture du service.
+            </Typography>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
+
   const serviceMeta = getServiceMeta(activeService);
   const lockedPath = getServicePath(activeService);
   const isBikeService = activeService === "bike-counter";
   const isBikeAnalyticsPage = location.pathname === "/bike/analyse";
   const bikeToggleTarget = isBikeAnalyticsPage ? "/bike" : "/bike/analyse";
   const bikeToggleLabel = isBikeAnalyticsPage ? "Retour aux stats" : "Voir l'analyse";
+  const hideTopBar =
+    activeService === "food-commande" ||
+    activeService === "food-cuisine" ||
+    (activeService === "planning-public" && isPlanningDetailView);
   const currentScreenLabel = isBikeService
     ? (isBikeAnalyticsPage ? "Analyse detaillee" : "Statistiques")
     : serviceMeta.screenLabel;
 
   return (
     <Box sx={{ minHeight: "100vh" }}>
-      <AppBar position="sticky" color="transparent" elevation={0}>
-        <Toolbar
-          sx={{
-            gap: 2,
-            px: { xs: 2, md: 4 },
-            py: 2,
-            backdropFilter: "blur(18px)"
-          }}
-        >
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Box
-              sx={{
-                width: 44,
-                height: 44,
-                borderRadius: "14px",
-                display: "grid",
-                placeItems: "center",
-                color: "primary.main",
-                background: "linear-gradient(180deg, rgba(244,138,31,0.18), rgba(244,138,31,0.08))",
-                border: "1px solid rgba(244,138,31,0.24)"
-              }}
-            >
-              <LocalPizzaRoundedIcon />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                {serviceMeta.applicationName}
-              </Typography>
-              <Typography color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                Interface de service
-              </Typography>
-            </Box>
-          </Stack>
-          <Chip label={currentScreenLabel} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
-          {isBikeService ? (
-            <Button
-              variant="outlined"
-              color="inherit"
-              onClick={() => navigate(bikeToggleTarget)}
-              sx={{ flexShrink: 0 }}
-            >
-              {bikeToggleLabel}
+      {hideTopBar ? null : (
+        <AppBar position="sticky" color="transparent" elevation={0}>
+          <Toolbar
+            sx={{
+              gap: 2,
+              px: { xs: 2, md: 4 },
+              py: 2,
+              backdropFilter: "blur(18px)"
+            }}
+          >
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "14px",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "primary.main",
+                  background: "linear-gradient(180deg, rgba(244,138,31,0.18), rgba(244,138,31,0.08))",
+                  border: "1px solid rgba(244,138,31,0.24)"
+                }}
+              >
+                <LocalPizzaRoundedIcon />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                  {serviceMeta.applicationName}
+                </Typography>
+                <Typography color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                  Interface de service
+                </Typography>
+              </Box>
+            </Stack>
+            <Chip label={currentScreenLabel} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
+            {isBikeService ? (
+              <Button
+                variant="outlined"
+                color="inherit"
+                onClick={() => navigate(bikeToggleTarget)}
+                sx={{ flexShrink: 0 }}
+              >
+                {bikeToggleLabel}
+              </Button>
+            ) : null}
+            <Button variant="outlined" color="inherit" onClick={handleLogout} sx={{ flexShrink: 0 }}>
+              Changer de service
             </Button>
-          ) : null}
-          <Button variant="outlined" color="inherit" onClick={handleLogout} sx={{ flexShrink: 0 }}>
-            Changer de service
-          </Button>
-        </Toolbar>
-      </AppBar>
+          </Toolbar>
+        </AppBar>
+      )}
 
       <Container
         maxWidth="xl"
@@ -481,7 +504,11 @@ export function App() {
             path="/planning"
             element={
               activeService === "planning-public" ? (
-                <PlanningScreen adminMode={false} onAuthenticationInvalid={() => resetAuthenticationState(null)} />
+                <PlanningScreen
+                  adminMode={false}
+                  onAuthenticationInvalid={() => resetAuthenticationState(null)}
+                  onDetailViewChange={setIsPlanningDetailView}
+                />
               ) : (
                 <Navigate to={lockedPath} replace />
               )
@@ -500,6 +527,38 @@ export function App() {
           <Route path="*" element={<Navigate to={lockedPath} replace />} />
         </Routes>
       </Container>
+
+      {hideTopBar ? (
+        <Box
+          component="button"
+          type="button"
+          aria-label="Changer de service"
+          title="Changer de service"
+          onClick={handleLogout}
+          sx={{
+            position: "fixed",
+            right: { xs: 16, md: 24 },
+            bottom: { xs: 16, md: 24 },
+            zIndex: 1200,
+            width: 58,
+            height: 58,
+            display: "grid",
+            placeItems: "center",
+            border: "none",
+            borderRadius: "50%",
+            color: "common.white",
+            cursor: "pointer",
+            boxShadow: "0 14px 34px rgba(0,0,0,0.28)",
+            backdropFilter: "blur(12px)",
+            background: "linear-gradient(180deg, rgba(244,138,31,0.96), rgba(224,118,18,0.96))",
+            "&:hover": {
+              background: "linear-gradient(180deg, rgba(250,147,41,1), rgba(232,124,21,1))"
+            }
+          }}
+        >
+          <SwapHorizRoundedIcon />
+        </Box>
+      ) : null}
     </Box>
   );
 }
