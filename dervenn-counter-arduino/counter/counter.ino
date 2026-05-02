@@ -8,13 +8,9 @@
 #endif
 
 const int SENSOR_PIN = A0;
-const int DEFAULT_DETECTION_THRESHOLD = 114;
-const uint8_t DETECTION_MARGIN_POINTS = 6;
+const int INITIAL_DETECTION_THRESHOLD = 150;
+const int DETECTION_MARGIN = 6;
 const unsigned long MIN_DELAY_BETWEEN_BIKES = 800; // ms
-const uint32_t THRESHOLD_RECALIBRATION_INTERVAL_MS = 60UL * 60UL * 1000UL; // 1h
-const uint8_t CALIBRATION_SAMPLE_COUNT = 10;
-const uint8_t CALIBRATION_LOW_SAMPLE_COUNT = 3;
-const uint16_t CALIBRATION_SAMPLE_INTERVAL_MS = 100;
 
 const char *WIFI_SSID = "androidap";
 const char *WIFI_PASSWORD = "n4l6c21u$76!.";
@@ -33,128 +29,24 @@ const uint16_t HTTP_TIMEOUT_MS = 10000;
 const uint32_t SERIAL_WAIT_MS = 3000;
 const uint16_t DHCP_WAIT_MS = 10000;
 const uint32_t WATCHDOG_TIMEOUT_MS = 4000;
+const uint32_t THRESHOLD_REFRESH_INTERVAL_MS = 5UL * 60UL * 1000UL;
+const uint8_t THRESHOLD_SAMPLE_COUNT = 10;
+const uint8_t THRESHOLD_TRIM_COUNT = 2;
+const uint8_t THRESHOLD_SAMPLE_DELAY_MS = 5;
 
 unsigned long lastDetectionTime = 0;
 unsigned long lastWiFiConnectAttempt = 0;
 unsigned long lastSendAttemptTime = 0;
-unsigned long lastThresholdCalibrationTime = 0;
+unsigned long lastThresholdRefreshTime = 0;
 unsigned long digitResyncDueTime = 0;
 uint16_t pendingBikeCount = 0;
+int detectionThreshold = INITIAL_DETECTION_THRESHOLD;
 bool udpStarted = false;
 bool watchdogReady = false;
 bool digitResyncPending = false;
-int detectionThreshold = DEFAULT_DETECTION_THRESHOLD;
-int emptySensorValue = DEFAULT_DETECTION_THRESHOLD - DETECTION_MARGIN_POINTS;
-bool thresholdCalibrationInProgress = false;
-unsigned long lastCalibrationSampleTime = 0;
-uint8_t calibrationSampleIndex = 0;
-int calibrationSamples[CALIBRATION_SAMPLE_COUNT];
-const char *currentCalibrationReason = "demarrage";
 
 using SecureClient = WiFiSSLClient;
 WiFiUDP udp;
-
-void sortValuesAscending(int *values, uint8_t count) {
-  for (uint8_t i = 1; i < count; i++) {
-    int currentValue = values[i];
-    int8_t j = i - 1;
-
-    while (j >= 0 && values[j] > currentValue) {
-      values[j + 1] = values[j];
-      j--;
-    }
-
-    values[j + 1] = currentValue;
-  }
-}
-
-int averageLowestValues(int *values, uint8_t count, uint8_t lowestCount) {
-  if (count == 0) {
-    return DEFAULT_DETECTION_THRESHOLD - DETECTION_MARGIN_POINTS;
-  }
-
-  uint8_t retainedCount = lowestCount > count ? count : lowestCount;
-  long total = 0;
-
-  sortValuesAscending(values, count);
-
-  for (uint8_t index = 0; index < retainedCount; index++) {
-    total += values[index];
-  }
-
-  return (int)(total / retainedCount);
-}
-
-void logThresholdCalibration() {
-  Serial.print("Seuil recalcule (");
-  Serial.print(currentCalibrationReason);
-  Serial.print("): vide=");
-  Serial.print(emptySensorValue);
-  Serial.print(" | marge=");
-  Serial.print(DETECTION_MARGIN_POINTS);
-  Serial.print(" | seuil=");
-  Serial.println(detectionThreshold);
-}
-
-void startThresholdCalibration(unsigned long now, const char *reason) {
-  if (thresholdCalibrationInProgress) {
-    return;
-  }
-
-  thresholdCalibrationInProgress = true;
-  calibrationSampleIndex = 0;
-  lastCalibrationSampleTime = now - CALIBRATION_SAMPLE_INTERVAL_MS;
-  currentCalibrationReason = reason;
-
-  Serial.print("Calibration du seuil en cours (");
-  Serial.print(currentCalibrationReason);
-  Serial.println(")...");
-}
-
-void processThresholdCalibration(unsigned long now) {
-  if (!thresholdCalibrationInProgress) {
-    return;
-  }
-
-  if (calibrationSampleIndex > 0 &&
-      now - lastCalibrationSampleTime < CALIBRATION_SAMPLE_INTERVAL_MS) {
-    return;
-  }
-
-  calibrationSamples[calibrationSampleIndex] = analogRead(SENSOR_PIN);
-  lastCalibrationSampleTime = now;
-  calibrationSampleIndex++;
-
-  if (calibrationSampleIndex < CALIBRATION_SAMPLE_COUNT) {
-    return;
-  }
-
-  emptySensorValue = averageLowestValues(
-    calibrationSamples,
-    CALIBRATION_SAMPLE_COUNT,
-    CALIBRATION_LOW_SAMPLE_COUNT);
-  detectionThreshold = emptySensorValue + DETECTION_MARGIN_POINTS;
-  lastThresholdCalibrationTime = now;
-  thresholdCalibrationInProgress = false;
-
-  logThresholdCalibration();
-}
-
-void recalibrateThresholdIfDue(unsigned long now) {
-  if (thresholdCalibrationInProgress) {
-    return;
-  }
-
-  if (now - lastThresholdCalibrationTime < THRESHOLD_RECALIBRATION_INTERVAL_MS) {
-    return;
-  }
-
-  if (now - lastDetectionTime <= MIN_DELAY_BETWEEN_BIKES) {
-    return;
-  }
-
-  startThresholdCalibration(now, "horaire");
-}
 
 void refreshWatchdog() {
   if (watchdogReady) {
@@ -510,6 +402,60 @@ void flushPendingBikeCountIfDue(unsigned long now) {
   sendPendingBikeCount();
 }
 
+void sortSensorSamples(int samples[], uint8_t sampleCount) {
+  for (uint8_t index = 1; index < sampleCount; index++) {
+    int value = samples[index];
+    int8_t previousIndex = index - 1;
+
+    while (previousIndex >= 0 && samples[previousIndex] > value) {
+      samples[previousIndex + 1] = samples[previousIndex];
+      previousIndex--;
+    }
+
+    samples[previousIndex + 1] = value;
+  }
+}
+
+void refreshDetectionThreshold() {
+  int samples[THRESHOLD_SAMPLE_COUNT];
+
+  for (uint8_t index = 0; index < THRESHOLD_SAMPLE_COUNT; index++) {
+    samples[index] = analogRead(SENSOR_PIN);
+    refreshWatchdog();
+    delay(THRESHOLD_SAMPLE_DELAY_MS);
+  }
+
+  sortSensorSamples(samples, THRESHOLD_SAMPLE_COUNT);
+
+  long baselineSum = 0;
+  uint8_t keptSampleCount = 0;
+  for (uint8_t index = THRESHOLD_TRIM_COUNT; index < THRESHOLD_SAMPLE_COUNT - THRESHOLD_TRIM_COUNT; index++) {
+    baselineSum += samples[index];
+    keptSampleCount++;
+  }
+
+  if (keptSampleCount == 0) {
+    return;
+  }
+
+  int baseline = baselineSum / keptSampleCount;
+  detectionThreshold = baseline + DETECTION_MARGIN;
+  lastThresholdRefreshTime = millis();
+
+  Serial.print("Seuil detection mis a jour: valeur a vide=");
+  Serial.print(baseline);
+  Serial.print(" | seuil=");
+  Serial.println(detectionThreshold);
+}
+
+void refreshDetectionThresholdIfDue(unsigned long now) {
+  if (now - lastThresholdRefreshTime < THRESHOLD_REFRESH_INTERVAL_MS) {
+    return;
+  }
+
+  refreshDetectionThreshold();
+}
+
 void handleDetection(unsigned long now) {
   int sensorValue = analogRead(SENSOR_PIN);
   if (sensorValue > detectionThreshold &&
@@ -535,15 +481,8 @@ void setup() {
   beginSerial();
   Serial.println("Initialisation du compteur velo en WiFi...");
   initWatchdog();
-  startThresholdCalibration(millis(), "demarrage");
 
-  while (thresholdCalibrationInProgress) {
-    unsigned long now = millis();
-    refreshWatchdog();
-    processThresholdCalibration(now);
-    delay(5);
-  }
-
+  refreshDetectionThreshold();
   connectToWiFi();
 
   Serial.println("Compteur pret : UDP immediat vers digit + batch serveur toutes les 5 minutes.");
@@ -555,9 +494,8 @@ void loop() {
   refreshWatchdog();
   ensureWiFiConnected(now);
   handleUdpCommands();
-  recalibrateThresholdIfDue(now);
-  processThresholdCalibration(now);
   handleDetection(now);
+  refreshDetectionThresholdIfDue(now);
   flushPendingBikeCountIfDue(now);
   sendDigitResyncIfDue(now);
   refreshWatchdog();
