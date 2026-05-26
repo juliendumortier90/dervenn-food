@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -11,6 +12,11 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import { Construct } from "constructs";
 
+const defaultFrontDomainName = "counter.dervenn-trail.org";
+const defaultFrontCertificateArn =
+  "arn:aws:acm:us-east-1:114563865686:certificate/fa1877b2-2517-45c5-8a40-36ade1143d9a";
+const defaultAllowedOrigin = `https://${defaultFrontDomainName}`;
+
 export class DervennFoodStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
@@ -18,12 +24,18 @@ export class DervennFoodStack extends Stack {
     const basicAuthUsername = process.env.DERVENN_BASIC_AUTH_USERNAME;
     const publicBasicAuthPassword = process.env.DERVENN_PUBLIC_BASIC_AUTH_PASSWORD;
     const adminBasicAuthPassword = process.env.DERVENN_ADMIN_BASIC_AUTH_PASSWORD;
-    const allowedOrigin = process.env.DERVENN_ALLOWED_ORIGIN ?? "*";
+    const allowedOrigin = process.env.DERVENN_ALLOWED_ORIGIN ?? defaultAllowedOrigin;
+    const frontDomainName = process.env.DERVENN_FRONT_DOMAIN ?? defaultFrontDomainName;
+    const frontCertificateArn = process.env.DERVENN_FRONT_CERTIFICATE_ARN ?? defaultFrontCertificateArn;
 
     if (!basicAuthUsername || !publicBasicAuthPassword || !adminBasicAuthPassword) {
       throw new Error(
         "DERVENN_BASIC_AUTH_USERNAME, DERVENN_PUBLIC_BASIC_AUTH_PASSWORD and DERVENN_ADMIN_BASIC_AUTH_PASSWORD are required"
       );
+    }
+
+    if (frontDomainName && !frontCertificateArn) {
+      throw new Error("DERVENN_FRONT_CERTIFICATE_ARN is required when DERVENN_FRONT_DOMAIN is set");
     }
 
     const commandesTable = new dynamodb.Table(this, "CommandesTable", {
@@ -211,8 +223,14 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
+    const frontCertificate = frontCertificateArn
+      ? acm.Certificate.fromCertificateArn(this, "FrontCertificate", frontCertificateArn)
+      : undefined;
+
     const distribution = new cloudfront.Distribution(this, "FrontDistribution", {
       defaultRootObject: "index.html",
+      certificate: frontCertificate,
+      domainNames: frontDomainName ? [frontDomainName] : undefined,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(websiteBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
@@ -263,7 +281,7 @@ export class DervennFoodStack extends Stack {
     });
 
     new CfnOutput(this, "FrontUrl", {
-      value: `https://${distribution.domainName}`
+      value: frontDomainName ? `https://${frontDomainName}` : `https://${distribution.domainName}`
     });
   }
 }
