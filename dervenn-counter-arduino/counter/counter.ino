@@ -23,7 +23,7 @@ const uint16_t DIGIT_UDP_PORT = 4210;
 const uint16_t COUNTER_UDP_LOCAL_PORT = 4211;
 
 const uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
-const uint32_t SEND_INTERVAL_MS = 5UL * 60UL * 1000UL;
+const uint32_t SEND_INTERVAL_MS = 1UL * 60UL * 1000UL;
 const uint16_t DIGIT_RESYNC_DELAY_MS = 1000;
 const uint16_t HTTP_TIMEOUT_MS = 10000;
 const uint32_t SERIAL_WAIT_MS = 3000;
@@ -485,7 +485,7 @@ void setup() {
   refreshDetectionThreshold();
   connectToWiFi();
 
-  Serial.println("Compteur pret : UDP immediat vers digit + batch serveur toutes les 5 minutes.");
+  Serial.println("Compteur pret : UDP immediat vers digit + batch serveur toutes les 1 minutes.");
 }
 
 void loop() {
