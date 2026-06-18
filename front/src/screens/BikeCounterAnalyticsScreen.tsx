@@ -26,12 +26,12 @@ interface BikeCounterAnalyticsScreenProps {
 }
 
 const RANGE_OPTIONS: Array<{ value: BikeHistoryRange; label: string }> = [
+  { value: "10years", label: "10 ans" },
+  { value: "5years", label: "5 ans" },
+  { value: "2years", label: "2 ans" },
   { value: "year", label: "1 an" },
   { value: "6months", label: "6 mois" },
-  { value: "3months", label: "3 mois" },
-  { value: "month", label: "1 mois" },
-  { value: "week", label: "7 jours" },
-  { value: "day", label: "24 h" }
+  { value: "month", label: "1 mois" }
 ];
 
 const numberFormatter = new Intl.NumberFormat("fr-FR");
@@ -45,25 +45,17 @@ const chartColors = {
 function formatBucketLabel(bucket: BikeCounterHistoryBucket, range: BikeHistoryRange): string {
   const start = new Date(bucket.startAt);
 
-  if (range === "day") {
-    return new Intl.DateTimeFormat("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(start);
-  }
-
-  if (range === "week" || range === "month") {
+  if (range === "month") {
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
       month: "short"
     }).format(start);
   }
 
-  if (range === "3months") {
-    return `Sem. ${new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "short"
-    }).format(start)}`;
+  if (range === "5years" || range === "10years") {
+    return new Intl.DateTimeFormat("fr-FR", {
+      year: "numeric"
+    }).format(start);
   }
 
   return new Intl.DateTimeFormat("fr-FR", {
@@ -76,7 +68,8 @@ function formatActivityDayLabel(bucket: BikeCounterHistoryBucket): string {
   return new Intl.DateTimeFormat("fr-FR", {
     weekday: "long",
     day: "2-digit",
-    month: "long"
+    month: "long",
+    year: "numeric"
   }).format(new Date(bucket.startAt));
 }
 

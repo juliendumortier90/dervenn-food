@@ -9,7 +9,7 @@ import {
   resetBikeSessionStats
 } from "../services/bikeRepository";
 
-const HISTORY_RANGES: BikeHistoryRange[] = ["year", "6months", "3months", "month", "week", "day"];
+const HISTORY_RANGES: BikeHistoryRange[] = ["10years", "5years", "2years", "year", "6months", "month"];
 
 function parseRequestedCount(body: string | null): number | null {
   if (!body) {

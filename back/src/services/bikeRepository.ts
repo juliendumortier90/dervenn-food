@@ -54,18 +54,6 @@ function mapStatsDocumentToStats(statsDocument?: Partial<BikeCounterStatsDocumen
   };
 }
 
-function startOfUtcHour(date: Date): Date {
-  return new Date(Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
-    date.getUTCHours(),
-    0,
-    0,
-    0
-  ));
-}
-
 function startOfUtcDay(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
 }
@@ -74,8 +62,8 @@ function startOfUtcMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 
-function addUtcHours(date: Date, hours: number): Date {
-  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+function startOfUtcYear(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
 }
 
 function addUtcDays(date: Date, days: number): Date {
@@ -84,6 +72,10 @@ function addUtcDays(date: Date, days: number): Date {
 
 function addUtcMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1, 0, 0, 0, 0));
+}
+
+function addUtcYears(date: Date, years: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear() + years, 0, 1, 0, 0, 0, 0));
 }
 
 function createSequentialBuckets(
@@ -101,13 +93,11 @@ function createSequentialBuckets(
 
     const bucketEnd = index === bucketCount - 1
       ? new Date(now)
-      : bucketUnit === "hour"
-        ? addUtcHours(bucketStart, 1)
-        : bucketUnit === "day"
-          ? addUtcDays(bucketStart, 1)
-          : bucketUnit === "week"
-            ? addUtcDays(bucketStart, 7)
-            : addUtcMonths(bucketStart, 1);
+      : bucketUnit === "day"
+        ? addUtcDays(bucketStart, 1)
+        : bucketUnit === "month"
+          ? addUtcMonths(bucketStart, 1)
+          : addUtcYears(bucketStart, 1);
 
     buckets.push({
       startAt: bucketStart.toISOString(),
@@ -120,40 +110,36 @@ function createSequentialBuckets(
 }
 
 function buildHistoryBuckets(range: BikeHistoryRange, now: Date): BikeCounterHistoryBucket[] {
-  if (range === "day") {
-    return createSequentialBuckets(addUtcHours(startOfUtcHour(now), -23), 24, "hour", now);
+  if (range === "10years") {
+    return createSequentialBuckets(addUtcYears(startOfUtcYear(now), -9), 10, "year", now);
   }
 
-  if (range === "week") {
-    return createSequentialBuckets(addUtcDays(startOfUtcDay(now), -6), 7, "day", now);
+  if (range === "5years") {
+    return createSequentialBuckets(addUtcYears(startOfUtcYear(now), -4), 5, "year", now);
   }
 
-  if (range === "month") {
-    return createSequentialBuckets(addUtcDays(startOfUtcDay(now), -29), 30, "day", now);
+  if (range === "2years") {
+    return createSequentialBuckets(addUtcMonths(startOfUtcMonth(now), -23), 24, "month", now);
   }
 
-  if (range === "3months") {
-    return createSequentialBuckets(addUtcDays(startOfUtcDay(now), -84), 13, "week", now);
+  if (range === "year") {
+    return createSequentialBuckets(addUtcMonths(startOfUtcMonth(now), -11), 12, "month", now);
   }
 
   if (range === "6months") {
     return createSequentialBuckets(addUtcMonths(startOfUtcMonth(now), -5), 6, "month", now);
   }
 
-  return createSequentialBuckets(addUtcMonths(startOfUtcMonth(now), -11), 12, "month", now);
+  return createSequentialBuckets(addUtcDays(startOfUtcDay(now), -29), 30, "day", now);
 }
 
 function getBucketUnit(range: BikeHistoryRange): BikeHistoryBucketUnit {
-  if (range === "day") {
-    return "hour";
-  }
-
-  if (range === "week" || range === "month") {
+  if (range === "month") {
     return "day";
   }
 
-  if (range === "3months") {
-    return "week";
+  if (range === "5years" || range === "10years") {
+    return "year";
   }
 
   return "month";

@@ -8,8 +8,8 @@ export interface BikeCounterStats {
   sessionCount: number;
 }
 
-export type BikeHistoryRange = "year" | "6months" | "3months" | "month" | "week" | "day";
-export type BikeHistoryBucketUnit = "month" | "week" | "day" | "hour";
+export type BikeHistoryRange = "10years" | "5years" | "2years" | "year" | "6months" | "month";
+export type BikeHistoryBucketUnit = "year" | "month" | "day";
 
 export interface BikeCounterHistoryBucket {
   startAt: string;
