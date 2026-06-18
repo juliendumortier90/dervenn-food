@@ -1,4 +1,4 @@
-import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
+import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
 import { Box, Card, Stack, Typography } from "@mui/material";
 import { getServiceMeta, serviceOrder } from "../services";
 import { AppService } from "../types";
@@ -44,7 +44,7 @@ export function ServiceSelectionScreen({ onSelectService, selectedService }: Ser
                   border: "1px solid rgba(244,138,31,0.2)"
                 }}
               >
-                <LocalPizzaRoundedIcon />
+                <AppsRoundedIcon />
               </Box>
               <Box>
                 <Typography variant="overline" sx={{ letterSpacing: "0.2em", color: "primary.main" }}>

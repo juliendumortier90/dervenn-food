@@ -1,11 +1,8 @@
 import {
   AppService,
-  BaseType,
   BikeCounterHistory,
   BikeHistoryRange,
   BikeCounterStats,
-  Commande,
-  CommandeStatus,
   PlanningAffectation,
   PlanningBenevole,
   PlanningCategorie,
@@ -56,9 +53,7 @@ export function saveSelectedService(service: AppService): void {
 
 export function getSelectedService(): AppService | null {
   const value = window.sessionStorage.getItem(serviceKey);
-  return value === "food-commande" ||
-    value === "food-cuisine" ||
-    value === "planning-public" ||
+  return value === "planning-public" ||
     value === "planning-admin" ||
     value === "bike-counter"
     ? value
@@ -108,44 +103,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getCommandes(): Promise<Commande[]> {
-  const data = await apiFetch<{ commandes: Commande[] }>("/commandes");
-  return data.commandes;
-}
-
-export async function addCommande(
-  commandeNumber: number,
-  baseType: BaseType,
-  comment?: string
-): Promise<Commande> {
-  const data = await apiFetch<{ commande: Commande }>("/commandes", {
-    method: "POST",
-    body: JSON.stringify({ action: "create", commandeNumber, baseType, comment })
-  });
-  return data.commande;
-}
-
-export async function updateCommandeStatus(
-  commandeNumber: number,
-  status: CommandeStatus
-): Promise<Commande> {
-  const data = await apiFetch<{ commande: Commande }>(`/commandes?action=update-status`, {
-    method: "POST",
-    body: JSON.stringify({ action: "update-status", commandeNumber, status })
-  });
-  return data.commande;
-}
-
-export async function deleteCommande(commandeNumber: number): Promise<Commande> {
-  const data = await apiFetch<{ commande: Commande }>(`/commandes?action=delete`, {
-    method: "POST",
-    body: JSON.stringify({ action: "delete", commandeNumber })
-  });
-  return data.commande;
-}
-
 export async function getBikeCounterStats(): Promise<BikeCounterStats> {
   const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/stats");
+  return data.stats;
+}
+
+export async function recalculateBikeCounterStats(): Promise<BikeCounterStats> {
+  const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/stats", {
+    method: "POST"
+  });
   return data.stats;
 }
 

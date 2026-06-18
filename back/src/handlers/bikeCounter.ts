@@ -5,6 +5,7 @@ import {
   getBikeCounterHistory,
   getBikeCounterStats,
   recordBikeCounterEntries,
+  recalculateBikeCounterStats,
   resetBikeSessionStats
 } from "../services/bikeRepository";
 
@@ -58,6 +59,11 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     if (event.httpMethod === "GET" && (event.resource === "/bike/stats" || event.path.endsWith("/bike/stats"))) {
       const stats = await getBikeCounterStats();
+      return jsonResponse(200, { stats });
+    }
+
+    if (event.httpMethod === "POST" && (event.resource === "/bike/stats" || event.path.endsWith("/bike/stats"))) {
+      const stats = await recalculateBikeCounterStats();
       return jsonResponse(200, { stats });
     }
 

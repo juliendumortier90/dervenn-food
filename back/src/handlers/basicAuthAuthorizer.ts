@@ -76,10 +76,6 @@ function expectedPasswordForPath(path: string): string | null {
     return expectedPublicPassword ?? null;
   }
 
-  if (path.startsWith("/commandes")) {
-    return expectedPublicPassword ?? null;
-  }
-
   return null;
 }
 

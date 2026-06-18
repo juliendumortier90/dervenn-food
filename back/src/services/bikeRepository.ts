@@ -271,6 +271,42 @@ export async function getBikeCounterStats(): Promise<BikeCounterStats> {
   return mapStatsDocumentToStats(response.Item as Partial<BikeCounterStatsDocument> | undefined);
 }
 
+export async function recalculateBikeCounterStats(): Promise<BikeCounterStats> {
+  let total = 0;
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+
+  do {
+    const response = await documentClient.send(
+      new ScanCommand({
+        TableName: eventsTableName,
+        Select: "COUNT",
+        ExclusiveStartKey: exclusiveStartKey
+      })
+    );
+
+    total += response.Count ?? 0;
+    exclusiveStartKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (exclusiveStartKey);
+
+  const response = await documentClient.send(
+    new UpdateCommand({
+      TableName: statsTableName,
+      Key: { id: STATS_DOCUMENT_ID },
+      UpdateExpression: "SET updatedAt = :updatedAt, #total = :total",
+      ExpressionAttributeNames: {
+        "#total": "total"
+      },
+      ExpressionAttributeValues: {
+        ":updatedAt": new Date().toISOString(),
+        ":total": total
+      },
+      ReturnValues: "ALL_NEW"
+    })
+  );
+
+  return mapStatsDocumentToStats(response.Attributes as Partial<BikeCounterStatsDocument> | undefined);
+}
+
 export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
   const now = new Date();
   const buckets = buildHistoryBuckets(range, now);

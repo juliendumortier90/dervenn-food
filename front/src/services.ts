@@ -8,26 +8,12 @@ interface ServiceMeta {
 }
 
 export const serviceOrder: AppService[] = [
-  "food-commande",
-  "food-cuisine",
   "planning-public",
   "planning-admin",
   "bike-counter"
 ];
 
 const serviceMetaByKey: Record<AppService, ServiceMeta> = {
-  "food-commande": {
-    applicationName: "Dervenn Food",
-    description: "Creer et suivre les tickets depuis le poste de prise de commande.",
-    screenLabel: "Commande",
-    title: "Commande"
-  },
-  "food-cuisine": {
-    applicationName: "Dervenn Food",
-    description: "Piloter la file de preparation et faire avancer les statuts.",
-    screenLabel: "Cuisine",
-    title: "Cuisine"
-  },
   "planning-public": {
     applicationName: "Dervenn Planning",
     description: "Consulter le planning benevoles sur toute la periode de l'evenement.",
@@ -53,14 +39,6 @@ export function getServiceMeta(service: AppService): ServiceMeta {
 }
 
 export function getServicePath(service: AppService): string {
-  if (service === "food-commande") {
-    return "/commande";
-  }
-
-  if (service === "food-cuisine") {
-    return "/cuisine";
-  }
-
   if (service === "planning-public") {
     return "/planning";
   }

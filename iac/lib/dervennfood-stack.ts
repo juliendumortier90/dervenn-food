@@ -38,13 +38,6 @@ export class DervennFoodStack extends Stack {
       throw new Error("DERVENN_FRONT_CERTIFICATE_ARN is required when DERVENN_FRONT_DOMAIN is set");
     }
 
-    const commandesTable = new dynamodb.Table(this, "CommandesTable", {
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.DESTROY
-    });
-
     const bikeEventsTable = new dynamodb.Table(this, "DervennBikeEventsTable", {
       tableName: "dervenn-bike-events",
       partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
@@ -67,11 +60,6 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
-    const foodLambdaEnvironment = {
-      TABLE_NAME: commandesTable.tableName,
-      ALLOWED_ORIGIN: allowedOrigin
-    };
-
     const bikeLambdaEnvironment = {
       BIKE_EVENTS_TABLE_NAME: bikeEventsTable.tableName,
       BIKE_STATS_TABLE_NAME: bikeStatsTable.tableName,
@@ -92,12 +80,6 @@ export class DervennFoodStack extends Stack {
         sourceMap: true
       }
     };
-
-    const commandesFunction = new lambdaNodejs.NodejsFunction(this, "CommandesFunction", {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, "../../back/src/handlers/commandes.ts"),
-      environment: foodLambdaEnvironment
-    });
 
     const bikeCounterFunction = new lambdaNodejs.NodejsFunction(this, "BikeCounterFunction", {
       ...lambdaDefaults,
@@ -121,7 +103,6 @@ export class DervennFoodStack extends Stack {
       }
     });
 
-    commandesTable.grantReadWriteData(commandesFunction);
     bikeEventsTable.grantReadWriteData(bikeCounterFunction);
     bikeStatsTable.grantReadWriteData(bikeCounterFunction);
     planningTable.grantReadWriteData(planningFunction);
@@ -141,22 +122,6 @@ export class DervennFoodStack extends Stack {
       resultsCacheTtl: Duration.seconds(0)
     });
 
-    const commandesResource = api.root.addResource("commandes");
-    commandesResource.addMethod("GET", new apigateway.LambdaIntegration(commandesFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-    commandesResource.addMethod("POST", new apigateway.LambdaIntegration(commandesFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const commandesPretesResource = commandesResource.addResource("pretes");
-    commandesPretesResource.addMethod("GET", new apigateway.LambdaIntegration(commandesFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
     const bikeResource = api.root.addResource("bike");
     const bikeCounterResource = bikeResource.addResource("counter");
     bikeCounterResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
@@ -166,6 +131,10 @@ export class DervennFoodStack extends Stack {
 
     const bikeStatsResource = bikeResource.addResource("stats");
     bikeStatsResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+    bikeStatsResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });

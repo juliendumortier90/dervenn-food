@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import PedalBikeRoundedIcon from "@mui/icons-material/PedalBikeRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
-import { Alert, Box, Card, CardContent, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Stack, Typography } from "@mui/material";
 import { BikeCounterStats } from "../types";
 
 interface BikeCounterScreenProps {
   error: string;
+  isRecalculating: boolean;
+  onRecalculate: () => Promise<void>;
   stats: BikeCounterStats;
 }
 
@@ -79,7 +82,7 @@ function CounterCard({
   );
 }
 
-export function BikeCounterScreen({ error, stats }: BikeCounterScreenProps) {
+export function BikeCounterScreen({ error, isRecalculating, onRecalculate, stats }: BikeCounterScreenProps) {
   return (
     <Box
       sx={{
@@ -91,6 +94,18 @@ export function BikeCounterScreen({ error, stats }: BikeCounterScreenProps) {
     >
       <Stack spacing={3} sx={{ width: "100%", maxWidth: 1080 }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
+        <Stack direction="row" justifyContent="flex-end">
+          <Button
+            disabled={isRecalculating}
+            onClick={() => {
+              void onRecalculate().catch(() => undefined);
+            }}
+            startIcon={<RefreshRoundedIcon />}
+            variant="outlined"
+          >
+            {isRecalculating ? "Recalcul..." : "Recalculer"}
+          </Button>
+        </Stack>
         <Box
           sx={{
             display: "grid",

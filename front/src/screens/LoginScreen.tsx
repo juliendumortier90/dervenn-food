@@ -1,6 +1,6 @@
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
+import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
 import type { ChangeEvent, FormEvent } from "react";
 import { Alert, Box, Button, Card, Stack, TextField, Typography } from "@mui/material";
 import { AppService } from "../types";
@@ -108,7 +108,7 @@ export function LoginScreen({
                   border: "1px solid rgba(244,138,31,0.2)"
                 }}
               >
-                <LocalPizzaRoundedIcon />
+                <AppsRoundedIcon />
               </Box>
               <Stack spacing={0.25}>
                 <Typography variant="h6">{serviceMeta.title}</Typography>

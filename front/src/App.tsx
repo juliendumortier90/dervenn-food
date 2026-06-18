@@ -1,4 +1,4 @@
-import LocalPizzaRoundedIcon from "@mui/icons-material/LocalPizzaRounded";
+import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import {
   AppBar,
@@ -19,90 +19,21 @@ import {
   getApiBaseUrl,
   getBikeCounterHistory,
   getBikeCounterStats,
-  getCommandes,
   getPlanningEditions,
   getSelectedService,
   hasCredentials,
   loadRuntimeConfig,
+  recalculateBikeCounterStats,
   saveCredentials,
   saveSelectedService
 } from "./api";
 import { BikeCounterScreen } from "./screens/BikeCounterScreen";
 import { BikeCounterAnalyticsScreen } from "./screens/BikeCounterAnalyticsScreen";
-import { CommandeScreen } from "./screens/BarScreen";
-import { CuisineScreen } from "./screens/CuisineScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PlanningScreen } from "./screens/PlanningScreen";
 import { ServiceSelectionScreen } from "./screens/ServiceSelectionScreen";
 import { getServiceMeta, getServicePath } from "./services";
-import { AppService, BikeCounterHistory, BikeCounterStats, BikeHistoryRange, Commande } from "./types";
-
-function useFoodPolling(
-  enabled: boolean,
-  onAuthenticationInvalid: () => void
-): {
-  commandes: Commande[];
-  error: string;
-  replaceCommandes: (commandes: Commande[]) => void;
-  upsertCommande: (commande: Commande) => void;
-  removeCommande: (commandeNumber: number) => void;
-} {
-  const [commandes, setCommandes] = useState<Commande[]>([]);
-  const [error, setError] = useState("");
-
-  function replaceCommandes(next: Commande[]): void {
-    setCommandes(next);
-    setError("");
-  }
-
-  function upsertCommande(commande: Commande): void {
-    setCommandes((current) => {
-      const next = current.filter((item) => item.commandeNumber !== commande.commandeNumber);
-      next.push(commande);
-      next.sort((left, right) => left.commandeNumber - right.commandeNumber);
-      return next;
-    });
-    setError("");
-  }
-
-  function removeCommande(commandeNumber: number): void {
-    setCommandes((current) => current.filter((item) => item.commandeNumber !== commandeNumber));
-    setError("");
-  }
-
-  async function reload(): Promise<void> {
-    if (!enabled) {
-      return;
-    }
-
-    try {
-      const next = await getCommandes();
-      replaceCommandes(next);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Erreur inconnue";
-      setError(message);
-      if (message === "Authentification invalide") {
-        onAuthenticationInvalid();
-      }
-      throw err;
-    }
-  }
-
-  useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-
-    void reload().catch(() => undefined);
-    const interval = window.setInterval(() => {
-      void reload().catch(() => undefined);
-    }, 30000);
-
-    return () => window.clearInterval(interval);
-  }, [enabled]);
-
-  return { commandes, error, replaceCommandes, upsertCommande, removeCommande };
-}
+import { AppService, BikeCounterHistory, BikeCounterStats, BikeHistoryRange } from "./types";
 
 function useBikeStatsPolling(
   enabled: boolean,
@@ -112,6 +43,8 @@ function useBikeStatsPolling(
   error: string;
   history: BikeCounterHistory | null;
   isHistoryLoading: boolean;
+  isStatsRecalculating: boolean;
+  recalculateStats: () => Promise<void>;
   replaceStats: (value: BikeCounterStats) => void;
   selectedRange: BikeHistoryRange;
   setSelectedRange: (value: BikeHistoryRange) => void;
@@ -123,6 +56,7 @@ function useBikeStatsPolling(
   const [statsError, setStatsError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isStatsRecalculating, setIsStatsRecalculating] = useState(false);
   const handleAuthenticationInvalid = useEffectEvent(() => {
     onAuthenticationInvalid();
   });
@@ -149,12 +83,28 @@ function useBikeStatsPolling(
     }
   }
 
-  useEffect(() => {
-    if (!historyEnabled) {
-      setIsHistoryLoading(false);
+  async function recalculateStats(): Promise<void> {
+    if (!enabled || isStatsRecalculating) {
       return;
     }
 
+    setIsStatsRecalculating(true);
+
+    try {
+      replaceStats(await recalculateBikeCounterStats());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setStatsError(message);
+      if (message === "Authentification invalide") {
+        handleAuthenticationInvalid();
+      }
+      throw err;
+    } finally {
+      setIsStatsRecalculating(false);
+    }
+  }
+
+  useEffect(() => {
     if (!enabled) {
       return;
     }
@@ -165,9 +115,14 @@ function useBikeStatsPolling(
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [enabled, historyEnabled]);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!historyEnabled) {
+      setIsHistoryLoading(false);
+      return;
+    }
+
     if (!enabled) {
       return;
     }
@@ -213,6 +168,8 @@ function useBikeStatsPolling(
     error: [statsError, historyEnabled ? historyError : ""].filter(Boolean).join(" • "),
     history,
     isHistoryLoading,
+    isStatsRecalculating,
+    recalculateStats,
     replaceStats,
     selectedRange,
     setSelectedRange,
@@ -242,10 +199,6 @@ export function App() {
     setPassword("");
   }
 
-  const foodPolling = useFoodPolling(
-    configReady && isAuthenticated && (activeService === "food-commande" || activeService === "food-cuisine"),
-    resetAuthenticationState
-  );
   const bikeHistoryEnabled =
     configReady && isAuthenticated && activeService === "bike-counter" && location.pathname === "/bike/analyse";
   const bikePolling = useBikeStatsPolling(
@@ -274,13 +227,11 @@ export function App() {
       saveCredentials(username, password);
       saveSelectedService(selectedService);
 
-      if (selectedService === "bike-counter") {
-        const stats = await getBikeCounterStats();
-        bikePolling.replaceStats(stats);
-      } else if (selectedService === "planning-public" || selectedService === "planning-admin") {
+      if (selectedService === "planning-public" || selectedService === "planning-admin") {
         await getPlanningEditions(selectedService === "planning-admin");
       } else {
-        foodPolling.replaceCommandes(await getCommandes());
+        const stats = await getBikeCounterStats();
+        bikePolling.replaceStats(stats);
       }
 
       setIsAuthenticated(true);
@@ -375,9 +326,7 @@ export function App() {
   const bikeToggleTarget = isBikeAnalyticsPage ? "/bike" : "/bike/analyse";
   const bikeToggleLabel = isBikeAnalyticsPage ? "Retour aux stats" : "Voir l'analyse";
   const hideTopBar =
-    activeService === "food-commande" ||
-    activeService === "food-cuisine" ||
-    (activeService === "planning-public" && isPlanningDetailView);
+    activeService === "planning-public" && isPlanningDetailView;
   const currentScreenLabel = isBikeService
     ? (isBikeAnalyticsPage ? "Analyse detaillee" : "Statistiques")
     : serviceMeta.screenLabel;
@@ -407,7 +356,7 @@ export function App() {
                   border: "1px solid rgba(244,138,31,0.24)"
                 }}
               >
-                <LocalPizzaRoundedIcon />
+                <AppsRoundedIcon />
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="h5" sx={{ fontWeight: 800 }}>
@@ -446,39 +395,15 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to={lockedPath} replace />} />
           <Route
-            path="/commande"
-            element={
-              activeService === "food-commande" ? (
-                <CommandeScreen
-                  commandes={foodPolling.commandes}
-                  onCommandeUpdated={foodPolling.upsertCommande}
-                  onCommandeDeleted={foodPolling.removeCommande}
-                  error={foodPolling.error}
-                />
-              ) : (
-                <Navigate to={lockedPath} replace />
-              )
-            }
-          />
-          <Route
-            path="/cuisine"
-            element={
-              activeService === "food-cuisine" ? (
-                <CuisineScreen
-                  commandes={foodPolling.commandes}
-                  onCommandeUpdated={foodPolling.upsertCommande}
-                  error={foodPolling.error}
-                />
-              ) : (
-                <Navigate to={lockedPath} replace />
-              )
-            }
-          />
-          <Route
             path="/bike"
             element={
               activeService === "bike-counter" ? (
-                <BikeCounterScreen error={bikePolling.error} stats={bikePolling.stats} />
+                <BikeCounterScreen
+                  error={bikePolling.error}
+                  isRecalculating={bikePolling.isStatsRecalculating}
+                  onRecalculate={bikePolling.recalculateStats}
+                  stats={bikePolling.stats}
+                />
               ) : (
                 <Navigate to={lockedPath} replace />
               )
