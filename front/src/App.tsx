@@ -12,7 +12,7 @@ import {
   Toolbar,
   Typography
 } from "@mui/material";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   clearCredentials,
@@ -29,6 +29,7 @@ import {
 } from "./api";
 import { BikeCounterScreen } from "./screens/BikeCounterScreen";
 import { BikeCounterAnalyticsScreen } from "./screens/BikeCounterAnalyticsScreen";
+import { InvitationGuestsScreen } from "./screens/InvitationGuestsScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PlanningScreen } from "./screens/PlanningScreen";
 import { ServiceSelectionScreen } from "./screens/ServiceSelectionScreen";
@@ -45,6 +46,7 @@ function useBikeStatsPolling(
   isHistoryLoading: boolean;
   isStatsRecalculating: boolean;
   recalculateStats: () => Promise<void>;
+  reloadHistory: () => Promise<void>;
   replaceStats: (value: BikeCounterStats) => void;
   selectedRange: BikeHistoryRange;
   setSelectedRange: (value: BikeHistoryRange) => void;
@@ -104,6 +106,30 @@ function useBikeStatsPolling(
     }
   }
 
+  const reloadHistory = useCallback(async (): Promise<void> => {
+    if (!historyEnabled || !enabled) {
+      setIsHistoryLoading(false);
+      return;
+    }
+
+    setIsHistoryLoading(true);
+
+    try {
+      const next = await getBikeCounterHistory(selectedRange);
+      setHistory(next);
+      setHistoryError("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setHistoryError(message);
+      if (message === "Authentification invalide") {
+        handleAuthenticationInvalid();
+      }
+      throw err;
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [enabled, historyEnabled, selectedRange]);
+
   useEffect(() => {
     if (!enabled) {
       return;
@@ -127,42 +153,15 @@ function useBikeStatsPolling(
       return;
     }
 
-    let isMounted = true;
-
-    async function reloadHistory(): Promise<void> {
-      setIsHistoryLoading(true);
-
-      try {
-        const next = await getBikeCounterHistory(selectedRange);
-        if (isMounted) {
-          setHistory(next);
-          setHistoryError("");
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Erreur inconnue";
-        if (isMounted) {
-          setHistoryError(message);
-        }
-        if (message === "Authentification invalide") {
-          handleAuthenticationInvalid();
-        }
-      } finally {
-        if (isMounted) {
-          setIsHistoryLoading(false);
-        }
-      }
-    }
-
-    void reloadHistory();
+    void reloadHistory().catch(() => undefined);
     const interval = window.setInterval(() => {
-      void reloadHistory();
+      void reloadHistory().catch(() => undefined);
     }, 60000);
 
     return () => {
-      isMounted = false;
       window.clearInterval(interval);
     };
-  }, [enabled, historyEnabled, selectedRange]);
+  }, [enabled, historyEnabled, reloadHistory]);
 
   return {
     error: [statsError, historyEnabled ? historyError : ""].filter(Boolean).join(" • "),
@@ -170,6 +169,7 @@ function useBikeStatsPolling(
     isHistoryLoading,
     isStatsRecalculating,
     recalculateStats,
+    reloadHistory,
     replaceStats,
     selectedRange,
     setSelectedRange,
@@ -206,7 +206,6 @@ export function App() {
     bikeHistoryEnabled,
     resetAuthenticationState
   );
-
   useEffect(() => {
     async function init(): Promise<void> {
       await loadRuntimeConfig();
@@ -229,6 +228,8 @@ export function App() {
 
       if (selectedService === "planning-public" || selectedService === "planning-admin") {
         await getPlanningEditions(selectedService === "planning-admin");
+      } else if (selectedService === "invitation-guests") {
+        await getPlanningEditions(true);
       } else {
         const stats = await getBikeCounterStats();
         bikePolling.replaceStats(stats);
@@ -417,6 +418,11 @@ export function App() {
                   error={bikePolling.error}
                   history={bikePolling.history}
                   isHistoryLoading={bikePolling.isHistoryLoading}
+                  onAuthenticationInvalid={() => resetAuthenticationState(null)}
+                  onEventsChanged={async (stats) => {
+                    bikePolling.replaceStats(stats);
+                    await bikePolling.reloadHistory();
+                  }}
                   onRangeChange={bikePolling.setSelectedRange}
                   selectedRange={bikePolling.selectedRange}
                 />
@@ -444,6 +450,18 @@ export function App() {
             element={
               activeService === "planning-admin" ? (
                 <PlanningScreen adminMode={true} onAuthenticationInvalid={() => resetAuthenticationState(null)} />
+              ) : (
+                <Navigate to={lockedPath} replace />
+              )
+            }
+          />
+          <Route
+            path="/invites"
+            element={
+              activeService === "invitation-guests" ? (
+                <InvitationGuestsScreen
+                  onAuthenticationInvalid={() => resetAuthenticationState(null)}
+                />
               ) : (
                 <Navigate to={lockedPath} replace />
               )

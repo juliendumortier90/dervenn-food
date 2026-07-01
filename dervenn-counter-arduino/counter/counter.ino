@@ -9,8 +9,10 @@
 
 const int SENSOR_PIN = A0;
 const int INITIAL_DETECTION_THRESHOLD = 150;
-const int DETECTION_MARGIN = 6;
+const int DETECTION_MARGIN = 8;
+const int DETECTION_RELEASE_MARGIN = 3;
 const unsigned long MIN_DELAY_BETWEEN_BIKES = 800; // ms
+const unsigned long MAX_DETECTION_PULSE_MS = 300; // ms
 
 const char *WIFI_SSID = "androidap";
 const char *WIFI_PASSWORD = "n4l6c21u$76!.";
@@ -29,21 +31,26 @@ const uint16_t HTTP_TIMEOUT_MS = 10000;
 const uint32_t SERIAL_WAIT_MS = 3000;
 const uint16_t DHCP_WAIT_MS = 10000;
 const uint32_t WATCHDOG_TIMEOUT_MS = 4000;
-const uint32_t THRESHOLD_REFRESH_INTERVAL_MS = 5UL * 60UL * 1000UL;
-const uint8_t THRESHOLD_SAMPLE_COUNT = 10;
-const uint8_t THRESHOLD_TRIM_COUNT = 2;
+const uint32_t THRESHOLD_INITIAL_DELAY_MS = 2UL * 60UL * 1000UL;
+const uint32_t THRESHOLD_REFRESH_INTERVAL_MS = 2UL * 60UL * 1000UL;
+const uint8_t THRESHOLD_SAMPLE_COUNT = 5;
+const uint8_t THRESHOLD_TRIM_COUNT = 1;
 const uint8_t THRESHOLD_SAMPLE_DELAY_MS = 5;
 
 unsigned long lastDetectionTime = 0;
 unsigned long lastWiFiConnectAttempt = 0;
 unsigned long lastSendAttemptTime = 0;
 unsigned long lastThresholdRefreshTime = 0;
+unsigned long sensorPulseStartTime = 0;
 unsigned long digitResyncDueTime = 0;
 uint16_t pendingBikeCount = 0;
 int detectionThreshold = INITIAL_DETECTION_THRESHOLD;
+int detectionReleaseThreshold = INITIAL_DETECTION_THRESHOLD - DETECTION_MARGIN + DETECTION_RELEASE_MARGIN;
 bool udpStarted = false;
 bool watchdogReady = false;
 bool digitResyncPending = false;
+bool detectionThresholdInitialized = false;
+bool sensorInPulse = false;
 
 using SecureClient = WiFiSSLClient;
 WiFiUDP udp;
@@ -416,7 +423,7 @@ void sortSensorSamples(int samples[], uint8_t sampleCount) {
   }
 }
 
-void refreshDetectionThreshold() {
+bool refreshDetectionThreshold() {
   int samples[THRESHOLD_SAMPLE_COUNT];
 
   for (uint8_t index = 0; index < THRESHOLD_SAMPLE_COUNT; index++) {
@@ -435,20 +442,34 @@ void refreshDetectionThreshold() {
   }
 
   if (keptSampleCount == 0) {
-    return;
+    return false;
   }
 
   int baseline = baselineSum / keptSampleCount;
   detectionThreshold = baseline + DETECTION_MARGIN;
+  detectionReleaseThreshold = baseline + DETECTION_RELEASE_MARGIN;
   lastThresholdRefreshTime = millis();
+  detectionThresholdInitialized = true;
 
   Serial.print("Seuil detection mis a jour: valeur a vide=");
   Serial.print(baseline);
   Serial.print(" | seuil=");
-  Serial.println(detectionThreshold);
+  Serial.print(detectionThreshold);
+  Serial.print(" | relachement=");
+  Serial.println(detectionReleaseThreshold);
+  return true;
 }
 
 void refreshDetectionThresholdIfDue(unsigned long now) {
+  if (!detectionThresholdInitialized) {
+    if (now < THRESHOLD_INITIAL_DELAY_MS) {
+      return;
+    }
+
+    refreshDetectionThreshold();
+    return;
+  }
+
   if (now - lastThresholdRefreshTime < THRESHOLD_REFRESH_INTERVAL_MS) {
     return;
   }
@@ -457,24 +478,58 @@ void refreshDetectionThresholdIfDue(unsigned long now) {
 }
 
 void handleDetection(unsigned long now) {
-  int sensorValue = analogRead(SENSOR_PIN);
-  if (sensorValue > detectionThreshold &&
-      (now - lastDetectionTime > MIN_DELAY_BETWEEN_BIKES)) {
-    lastDetectionTime = now;
-    if (pendingBikeCount == 0) {
-      lastSendAttemptTime = now;
-    }
-    pendingBikeCount++;
-
-    notifyDigitViaUdp(1);
-
-    Serial.print("Passage detecte, capteur=");
-    Serial.print(sensorValue);
-    Serial.print(" | seuil=");
-    Serial.print(detectionThreshold);
-    Serial.print(" | en attente=");
-    Serial.println(pendingBikeCount);
+  if (!detectionThresholdInitialized) {
+    return;
   }
+
+  int sensorValue = analogRead(SENSOR_PIN);
+  if (sensorInPulse) {
+    if (sensorValue > detectionReleaseThreshold) {
+      return;
+    }
+
+    sensorInPulse = false;
+
+    unsigned long pulseDuration = now - sensorPulseStartTime;
+    if (pulseDuration > MAX_DETECTION_PULSE_MS) {
+      Serial.print("Impulsion ignoree, duree=");
+      Serial.print(pulseDuration);
+      Serial.print(" ms | seuil=");
+      Serial.print(detectionThreshold);
+      Serial.print(" | relachement=");
+      Serial.println(detectionReleaseThreshold);
+      return;
+    }
+
+    if (now - lastDetectionTime > MIN_DELAY_BETWEEN_BIKES) {
+      lastDetectionTime = now;
+      if (pendingBikeCount == 0) {
+        lastSendAttemptTime = now;
+      }
+      pendingBikeCount++;
+
+      notifyDigitViaUdp(1);
+
+      Serial.print("Passage detecte, capteur=");
+      Serial.print(sensorValue);
+      Serial.print(" | duree=");
+      Serial.print(pulseDuration);
+      Serial.print(" ms | seuil=");
+      Serial.print(detectionThreshold);
+      Serial.print(" | relachement=");
+      Serial.print(detectionReleaseThreshold);
+      Serial.print(" | en attente=");
+      Serial.println(pendingBikeCount);
+    }
+    return;
+  }
+
+  if (sensorValue <= detectionThreshold) {
+    return;
+  }
+
+  sensorInPulse = true;
+  sensorPulseStartTime = now;
 }
 
 void setup() {
@@ -482,10 +537,9 @@ void setup() {
   Serial.println("Initialisation du compteur velo en WiFi...");
   initWatchdog();
 
-  refreshDetectionThreshold();
   connectToWiFi();
 
-  Serial.println("Compteur pret : UDP immediat vers digit + batch serveur toutes les 1 minutes.");
+  Serial.println("Compteur pret : calibrage capteur dans 2 minutes, puis UDP immediat vers digit + batch serveur toutes les 1 minutes.");
 }
 
 void loop() {

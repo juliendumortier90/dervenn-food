@@ -60,6 +60,25 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
+    const invitationGuestsTable = new dynamodb.Table(this, "DervennInvitationGuestsTable", {
+      tableName: "dervenn-invitation-guests",
+      partitionKey: { name: "username", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
+    const invitationStatusesTable = new dynamodb.Table(this, "DervennInvitationStatusesTable", {
+      tableName: "dervenn-invitation-statuses",
+      partitionKey: { name: "invitationId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+    invitationStatusesTable.addGlobalSecondaryIndex({
+      indexName: "editionId-index",
+      partitionKey: { name: "editionId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "username", type: dynamodb.AttributeType.STRING }
+    });
+
     const bikeLambdaEnvironment = {
       BIKE_EVENTS_TABLE_NAME: bikeEventsTable.tableName,
       BIKE_STATS_TABLE_NAME: bikeStatsTable.tableName,
@@ -68,6 +87,12 @@ export class DervennFoodStack extends Stack {
 
     const planningLambdaEnvironment = {
       PLANNING_TABLE_NAME: planningTable.tableName,
+      ALLOWED_ORIGIN: allowedOrigin
+    };
+
+    const invitationLambdaEnvironment = {
+      INVITATION_GUESTS_TABLE_NAME: invitationGuestsTable.tableName,
+      INVITATION_STATUSES_TABLE_NAME: invitationStatusesTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
     };
 
@@ -93,6 +118,12 @@ export class DervennFoodStack extends Stack {
       environment: planningLambdaEnvironment
     });
 
+    const invitationFunction = new lambdaNodejs.NodejsFunction(this, "InvitationFunction", {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, "../../back/src/handlers/invitation.ts"),
+      environment: invitationLambdaEnvironment
+    });
+
     const basicAuthAuthorizer = new lambdaNodejs.NodejsFunction(this, "BasicAuthAuthorizerFunction", {
       ...lambdaDefaults,
       entry: path.join(__dirname, "../../back/src/handlers/basicAuthAuthorizer.ts"),
@@ -106,6 +137,8 @@ export class DervennFoodStack extends Stack {
     bikeEventsTable.grantReadWriteData(bikeCounterFunction);
     bikeStatsTable.grantReadWriteData(bikeCounterFunction);
     planningTable.grantReadWriteData(planningFunction);
+    invitationGuestsTable.grantReadData(invitationFunction);
+    invitationStatusesTable.grantReadWriteData(invitationFunction);
 
     const api = new apigateway.RestApi(this, "DervennApi", {
       restApiName: "Dervenn API",
@@ -141,6 +174,16 @@ export class DervennFoodStack extends Stack {
 
     const bikeHistoryResource = bikeResource.addResource("history");
     bikeHistoryResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const bikeEventsResource = bikeResource.addResource("events");
+    bikeEventsResource.addMethod("GET", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+    bikeEventsResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });
@@ -181,6 +224,16 @@ export class DervennFoodStack extends Stack {
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });
     planningAdminEditionItemResource.addMethod("POST", new apigateway.LambdaIntegration(planningFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
+    const invitesResource = api.root.addResource("invites");
+    invitesResource.addMethod("GET", new apigateway.LambdaIntegration(invitationFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+    invitesResource.addMethod("POST", new apigateway.LambdaIntegration(invitationFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });

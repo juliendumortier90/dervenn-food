@@ -1,8 +1,14 @@
 import {
   AppService,
+  BikeCounterEntry,
   BikeCounterHistory,
   BikeHistoryRange,
   BikeCounterStats,
+  InvitationAttendanceStatus,
+  InvitationContactStatus,
+  InvitationGuest,
+  InvitationGuestFilters,
+  PaginatedInvitationGuests,
   PlanningAffectation,
   PlanningBenevole,
   PlanningCategorie,
@@ -55,7 +61,8 @@ export function getSelectedService(): AppService | null {
   const value = window.sessionStorage.getItem(serviceKey);
   return value === "planning-public" ||
     value === "planning-admin" ||
-    value === "bike-counter"
+    value === "bike-counter" ||
+    value === "invitation-guests"
     ? value
     : null;
 }
@@ -118,6 +125,103 @@ export async function recalculateBikeCounterStats(): Promise<BikeCounterStats> {
 export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
   const data = await apiFetch<{ history: BikeCounterHistory }>(`/bike/history?range=${encodeURIComponent(range)}`);
   return data.history;
+}
+
+export async function getBikeCounterEvents(
+  from: string,
+  to: string,
+  limit = 200
+): Promise<BikeCounterEntry[]> {
+  const params = new URLSearchParams({
+    from,
+    to,
+    limit: String(limit)
+  });
+  const data = await apiFetch<{ entries: BikeCounterEntry[] }>(`/bike/events?${params.toString()}`);
+  return data.entries;
+}
+
+export async function createBikeCounterEvents(count: number, createdAt: string): Promise<BikeCounterStats> {
+  const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/events", {
+    method: "POST",
+    body: JSON.stringify({ action: "create", count, createdAt })
+  });
+  return data.stats;
+}
+
+export async function deleteBikeCounterEvents(ids: string[]): Promise<BikeCounterStats> {
+  const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/events", {
+    method: "POST",
+    body: JSON.stringify({ action: "delete", ids })
+  });
+  return data.stats;
+}
+
+export async function getInvitationGuests(filters: InvitationGuestFilters = {}): Promise<PaginatedInvitationGuests> {
+  const params = new URLSearchParams();
+
+  if (filters.editionId) {
+    params.set("editionId", filters.editionId);
+  }
+
+  if (filters.contactStatus) {
+    params.set("contactStatus", filters.contactStatus);
+  }
+
+  if (filters.attendanceStatus) {
+    params.set("attendanceStatus", filters.attendanceStatus);
+  }
+
+  if (filters.invitationFilter) {
+    params.set("invitationFilter", filters.invitationFilter);
+  }
+
+  if (filters.invitedOnly) {
+    params.set("invitedOnly", "true");
+  }
+
+  if (filters.limit) {
+    params.set("limit", String(filters.limit));
+  }
+
+  if (filters.nextToken) {
+    params.set("nextToken", filters.nextToken);
+  }
+
+  const queryString = params.toString();
+  return apiFetch<PaginatedInvitationGuests>(`/invites${queryString ? `?${queryString}` : ""}`);
+}
+
+export async function inviteGuestToEdition(username: string, editionId: string): Promise<void> {
+  await apiFetch<{ status: unknown }>("/invites", {
+    method: "POST",
+    body: JSON.stringify({ action: "invite", username, editionId })
+  });
+}
+
+export async function uninviteGuestFromEdition(username: string, editionId: string): Promise<void> {
+  await apiFetch<void>("/invites", {
+    method: "POST",
+    body: JSON.stringify({ action: "uninvite", username, editionId })
+  });
+}
+
+export async function updateInvitationGuestStatus(
+  username: string,
+  editionId: string,
+  contactStatus: InvitationContactStatus,
+  attendanceStatus: InvitationAttendanceStatus
+): Promise<void> {
+  await apiFetch<{ status: unknown }>("/invites", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "update-status",
+      username,
+      editionId,
+      contactStatus,
+      attendanceStatus
+    })
+  });
 }
 
 function getPlanningBasePath(adminMode: boolean): string {

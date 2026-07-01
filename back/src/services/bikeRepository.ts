@@ -194,6 +194,10 @@ function incrementActivityDay(activityDaysByStart: Map<string, BikeCounterHistor
 
 async function createBikeCounterEntries(count: number): Promise<BikeCounterEntry[]> {
   const createdAt = new Date().toISOString();
+  return createBikeCounterEntriesAt(count, createdAt);
+}
+
+async function createBikeCounterEntriesAt(count: number, createdAt: string): Promise<BikeCounterEntry[]> {
   const entries = Array.from({ length: count }, () => ({
     id: createCounterId(createdAt),
     createdAt
@@ -244,6 +248,77 @@ export async function recordBikeCounterEntries(count: number): Promise<{ entries
   const stats = await incrementBikeCounterStats(count);
 
   return { entries, stats };
+}
+
+export async function createBikeCounterEntriesForAdmin(
+  count: number,
+  createdAt: string
+): Promise<{ entries: BikeCounterEntry[]; stats: BikeCounterStats }> {
+  const entries = await createBikeCounterEntriesAt(count, createdAt);
+  const stats = await recalculateBikeCounterStats();
+
+  return { entries, stats };
+}
+
+export async function listBikeCounterEntries(
+  from: string,
+  to: string,
+  limit: number
+): Promise<BikeCounterEntry[]> {
+  const entries: BikeCounterEntry[] = [];
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+
+  do {
+    const response = await documentClient.send(
+      new ScanCommand({
+        TableName: eventsTableName,
+        ProjectionExpression: "id, #createdAt",
+        FilterExpression: "#createdAt BETWEEN :from AND :to",
+        ExpressionAttributeNames: {
+          "#createdAt": "createdAt"
+        },
+        ExpressionAttributeValues: {
+          ":from": from,
+          ":to": to
+        },
+        ExclusiveStartKey: exclusiveStartKey
+      })
+    );
+
+    for (const item of response.Items ?? []) {
+      if (typeof item.id === "string" && typeof item.createdAt === "string") {
+        entries.push({
+          id: item.id,
+          createdAt: item.createdAt
+        });
+      }
+    }
+
+    exclusiveStartKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (exclusiveStartKey);
+
+  return entries
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+    .slice(0, limit);
+}
+
+export async function deleteBikeCounterEntriesForAdmin(ids: string[]): Promise<{ deletedCount: number; stats: BikeCounterStats }> {
+  for (const batch of chunkArray(ids, BATCH_WRITE_LIMIT)) {
+    await documentClient.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [eventsTableName]: batch.map((id) => ({
+            DeleteRequest: {
+              Key: { id }
+            }
+          }))
+        }
+      })
+    );
+  }
+
+  const stats = await recalculateBikeCounterStats();
+  return { deletedCount: ids.length, stats };
 }
 
 export async function getBikeCounterStats(): Promise<BikeCounterStats> {

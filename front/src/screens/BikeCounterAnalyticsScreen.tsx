@@ -1,26 +1,47 @@
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import TimelineRoundedIcon from "@mui/icons-material/TimelineRounded";
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
+  CircularProgress,
   Chip,
   Divider,
   Stack,
+  TextField,
   Typography
 } from "@mui/material";
+import Checkbox from "@mui/material/Checkbox";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import { BikeCounterHistory, BikeCounterHistoryBucket, BikeHistoryRange } from "../types";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import {
+  createBikeCounterEvents,
+  deleteBikeCounterEvents,
+  getBikeCounterEvents
+} from "../api";
+import {
+  BikeCounterEntry,
+  BikeCounterHistory,
+  BikeCounterHistoryBucket,
+  BikeCounterStats,
+  BikeHistoryRange
+} from "../types";
 
 interface BikeCounterAnalyticsScreenProps {
   error: string;
   history: BikeCounterHistory | null;
   isHistoryLoading: boolean;
+  onAuthenticationInvalid: () => void;
+  onEventsChanged: (stats: BikeCounterStats) => Promise<void>;
   onRangeChange: (range: BikeHistoryRange) => void;
   selectedRange: BikeHistoryRange;
 }
@@ -35,12 +56,26 @@ const RANGE_OPTIONS: Array<{ value: BikeHistoryRange; label: string }> = [
 ];
 
 const numberFormatter = new Intl.NumberFormat("fr-FR");
+const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "medium",
+  timeStyle: "medium"
+});
 const chartColors = {
   background: "#070d1c",
   line: "#ffad4d",
   point: "#34d7a4",
   text: "#98a5c3"
 };
+
+function toLocalDateTimeInputValue(date: Date): string {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+function toIsoDateTime(localValue: string): string | null {
+  const date = new Date(localValue);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 function formatBucketLabel(bucket: BikeCounterHistoryBucket, range: BikeHistoryRange): string {
   const start = new Date(bucket.startAt);
@@ -241,13 +276,147 @@ export function BikeCounterAnalyticsScreen({
   error,
   history,
   isHistoryLoading,
+  onAuthenticationInvalid,
+  onEventsChanged,
   onRangeChange,
   selectedRange
 }: BikeCounterAnalyticsScreenProps) {
+  const now = useMemo(() => new Date(), []);
+  const [events, setEvents] = useState<BikeCounterEntry[]>([]);
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(() => new Set());
+  const [eventsFrom, setEventsFrom] = useState(() => toLocalDateTimeInputValue(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)));
+  const [eventsTo, setEventsTo] = useState(() => toLocalDateTimeInputValue(now));
+  const [createAt, setCreateAt] = useState(() => toLocalDateTimeInputValue(now));
+  const [createCount, setCreateCount] = useState("1");
+  const [adminError, setAdminError] = useState("");
+  const [adminMessage, setAdminMessage] = useState("");
+  const [isEventsLoading, setIsEventsLoading] = useState(false);
+  const [isMutatingEvents, setIsMutatingEvents] = useState(false);
   const tableRows = history
     ? [...(history.activityDays?.filter((bucket) => bucket.count > 0) ?? history.buckets.filter((bucket) => bucket.count > 0))]
         .reverse()
     : [];
+  const allVisibleEventIds = events.map((event) => event.id);
+  const selectedEventsCount = allVisibleEventIds.filter((id) => selectedEventIds.has(id)).length;
+  const allVisibleEventsSelected = allVisibleEventIds.length > 0 && selectedEventsCount === allVisibleEventIds.length;
+
+  async function loadEvents(): Promise<void> {
+    const from = toIsoDateTime(eventsFrom);
+    const to = toIsoDateTime(eventsTo);
+
+    if (!from || !to) {
+      setAdminError("La periode de recherche est invalide.");
+      return;
+    }
+
+    if (Date.parse(from) > Date.parse(to)) {
+      setAdminError("La date de debut doit etre avant la date de fin.");
+      return;
+    }
+
+    setIsEventsLoading(true);
+    setAdminError("");
+
+    try {
+      const nextEvents = await getBikeCounterEvents(from, to, 300);
+      setEvents(nextEvents);
+      setSelectedEventIds(new Set());
+      setAdminMessage(`${numberFormatter.format(nextEvents.length)} evenement(s) charge(s).`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setAdminError(message);
+      if (message === "Authentification invalide") {
+        onAuthenticationInvalid();
+      }
+    } finally {
+      setIsEventsLoading(false);
+    }
+  }
+
+  async function handleCreateEvents(): Promise<void> {
+    const count = Number(createCount);
+    const createdAt = toIsoDateTime(createAt);
+
+    if (!Number.isInteger(count) || count < 1 || count > 1000 || !createdAt) {
+      setAdminError("Indique un nombre entre 1 et 1000 et une date valide.");
+      return;
+    }
+
+    setIsMutatingEvents(true);
+    setAdminError("");
+
+    try {
+      const stats = await createBikeCounterEvents(count, createdAt);
+      await onEventsChanged(stats);
+      await loadEvents();
+      setAdminMessage(`${numberFormatter.format(count)} evenement(s) cree(s).`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setAdminError(message);
+      if (message === "Authentification invalide") {
+        onAuthenticationInvalid();
+      }
+    } finally {
+      setIsMutatingEvents(false);
+    }
+  }
+
+  async function handleDeleteSelectedEvents(): Promise<void> {
+    const ids = Array.from(selectedEventIds);
+
+    if (ids.length === 0) {
+      setAdminError("Selectionne au moins un evenement a supprimer.");
+      return;
+    }
+
+    setIsMutatingEvents(true);
+    setAdminError("");
+
+    try {
+      const stats = await deleteBikeCounterEvents(ids);
+      await onEventsChanged(stats);
+      await loadEvents();
+      setAdminMessage(`${numberFormatter.format(ids.length)} evenement(s) supprime(s).`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setAdminError(message);
+      if (message === "Authentification invalide") {
+        onAuthenticationInvalid();
+      }
+    } finally {
+      setIsMutatingEvents(false);
+    }
+  }
+
+  function toggleEventSelection(eventId: string): void {
+    setSelectedEventIds((current) => {
+      const next = new Set(current);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllVisibleEvents(): void {
+    setSelectedEventIds((current) => {
+      if (allVisibleEventsSelected) {
+        return new Set();
+      }
+
+      const next = new Set(current);
+      for (const eventId of allVisibleEventIds) {
+        next.add(eventId);
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    void loadEvents();
+  }, []);
 
   return (
     <Stack spacing={3.5}>
@@ -351,6 +520,129 @@ export function BikeCounterAnalyticsScreen({
                     <TableRow>
                       <TableCell colSpan={3} sx={{ py: 6, textAlign: "center", color: "text.secondary" }}>
                         {isHistoryLoading ? "Chargement des donnees..." : "Aucune donnee exploitable sur cette periode."}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent sx={{ p: { xs: 3, md: 4 } }}>
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h5">Administration des evenements</Typography>
+              <Typography sx={{ color: "text.secondary" }}>
+                Creation manuelle et suppression selective des detections brutes.
+              </Typography>
+            </Box>
+
+            {adminError ? <Alert severity="error">{adminError}</Alert> : null}
+            {adminMessage && !adminError ? <Alert severity="success">{adminMessage}</Alert> : null}
+
+            <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems={{ xs: "stretch", lg: "flex-end" }}>
+              <TextField
+                label="Date et heure"
+                type="datetime-local"
+                value={createAt}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setCreateAt(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ minWidth: { lg: 240 } }}
+              />
+              <TextField
+                label="Nombre"
+                type="number"
+                value={createCount}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setCreateCount(event.target.value)}
+                slotProps={{ htmlInput: { min: 1, max: 1000 } }}
+                sx={{ width: { xs: "100%", lg: 140 } }}
+              />
+              <Button
+                variant="contained"
+                startIcon={<AddRoundedIcon />}
+                onClick={handleCreateEvents}
+                disabled={isMutatingEvents}
+                sx={{ minHeight: 56 }}
+              >
+                Creer
+              </Button>
+            </Stack>
+
+            <Divider />
+
+            <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems={{ xs: "stretch", lg: "flex-end" }}>
+              <TextField
+                label="Du"
+                type="datetime-local"
+                value={eventsFrom}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setEventsFrom(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ minWidth: { lg: 240 } }}
+              />
+              <TextField
+                label="Au"
+                type="datetime-local"
+                value={eventsTo}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setEventsTo(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ minWidth: { lg: 240 } }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={isEventsLoading ? <CircularProgress size={18} /> : <RefreshRoundedIcon />}
+                onClick={loadEvents}
+                disabled={isEventsLoading || isMutatingEvents}
+                sx={{ minHeight: 56 }}
+              >
+                Charger
+              </Button>
+              <Button
+                color="error"
+                variant="outlined"
+                startIcon={<DeleteRoundedIcon />}
+                onClick={handleDeleteSelectedEvents}
+                disabled={selectedEventsCount === 0 || isMutatingEvents}
+                sx={{ minHeight: 56, ml: { lg: "auto" } }}
+              >
+                Supprimer ({numberFormatter.format(selectedEventsCount)})
+              </Button>
+            </Stack>
+
+            <TableContainer sx={{ maxHeight: 420, border: "1px solid rgba(158, 176, 214, 0.14)", borderRadius: 2 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={allVisibleEventsSelected}
+                        indeterminate={selectedEventsCount > 0 && !allVisibleEventsSelected}
+                        onChange={toggleAllVisibleEvents}
+                      />
+                    </TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>ID</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {events.map((bikeEvent) => (
+                    <TableRow key={bikeEvent.id} hover selected={selectedEventIds.has(bikeEvent.id)}>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedEventIds.has(bikeEvent.id)}
+                          onChange={() => toggleEventSelection(bikeEvent.id)}
+                        />
+                      </TableCell>
+                      <TableCell>{dateTimeFormatter.format(new Date(bikeEvent.createdAt))}</TableCell>
+                      <TableCell sx={{ fontFamily: "monospace", fontSize: 12 }}>{bikeEvent.id}</TableCell>
+                    </TableRow>
+                  ))}
+                  {events.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} sx={{ py: 5, textAlign: "center", color: "text.secondary" }}>
+                        {isEventsLoading ? "Chargement des evenements..." : "Aucun evenement sur cette periode."}
                       </TableCell>
                     </TableRow>
                   ) : null}

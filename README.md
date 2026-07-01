@@ -5,6 +5,7 @@ Application simple pour plusieurs services Dervenn:
 - `Dervenn Planning / Planning benevoles`: consultation du planning benevoles en lecture seule
 - `Dervenn Planning / Planning benevoles admin`: creation des editions, benevoles, categories et affectations
 - `Dervenn Bike / Counter`: consultation des statistiques du compteur velo
+- `Dervenn Invitations / Invitations`: consultation des invites enregistres
 
 ## Structure
 
@@ -67,6 +68,42 @@ Routes utiles:
 - `POST /bike/counter`: ajoute un passage dans la table `dervenn-bike`
 - `GET /bike/stats`: retourne le nombre total de passages en base
 - `POST /bike/stats`: recalcule le total depuis les evenements bike
+- `GET /invites`: liste les utilisateurs ou les invitations d'une edition avec pagination `limit` et `nextToken`, et filtre `invitationFilter=all|invited|not_invited`
+- `POST /invites`: cree, supprime ou met a jour une invitation d'edition (`invite`, `uninvite`, `update-status`)
+
+## Import des invites Instagram
+
+Placer l'export JSON Instagram dans un dossier local non versionne, par exemple:
+
+```bash
+mkdir -p data
+cp ~/Downloads/instagram_followers_light.json data/instagram_followers_light.json
+```
+
+Puis lancer l'import vers DynamoDB:
+
+```bash
+python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --profile <aws-profile>
+```
+
+Le script lit un tableau d'utilisateurs au format Instagram `profile_pic_url`, `username`, `full_name`.
+Il retire les emojis de `username` et `full_name`, telecharge la photo, la convertit en base64 puis ecrit dans
+`dervenn-invitation-guests` les champs `username`, `fullName` et `profilePictureBase64`.
+
+Pour initialiser aussi les status par defaut pour une edition planning:
+
+```bash
+python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --edition-id <editionId> --profile <aws-profile>
+```
+
+Cette option cree dans `dervenn-invitation-statuses` les documents `username#editionId` avec
+`contactStatus=non_contacte` et `attendanceStatus=pas_repondu`, sans ecraser les status deja existants.
+
+Pour tester sans ecrire en base:
+
+```bash
+python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --dry-run
+```
 
 ## Authentification
 
@@ -114,6 +151,13 @@ Le stack publie aussi un fichier `runtime-config.json` dans le bucket du front, 
 - L'API bike passe par une lambda dediee et le planning par une lambda `planning`
 - Les tables DynamoDB bike s'appellent `dervenn-bike-events` et `dervenn-bike-stats`
 - La table DynamoDB planning s'appelle `dervenn-planning`
+- La table DynamoDB invitations s'appelle `dervenn-invitation-guests` et utilise `username` comme cle primaire
+- La table DynamoDB des status d'invitation s'appelle `dervenn-invitation-statuses`
+  - cle primaire: `invitationId`, au format `username#editionId`
+  - index `editionId-index`: permet de lister les status d'une edition planning
+  - status contact: `non_contacte`, `premier_contact`, `contacte`
+  - status presence: `pas_repondu`, `pas_encore_sur`, `present`, `absent`
+- L'ecran Invitations contient une vue utilisateurs globale pour inviter a une edition, puis une vue edition pour desinviter et gerer les status
 - L'API est protegee par un authorizer Lambda qui valide l'en-tete `Authorization` selon le service appele
 - Le front est servi par S3 + CloudFront
 

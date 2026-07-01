@@ -10,7 +10,8 @@ interface ServiceMeta {
 export const serviceOrder: AppService[] = [
   "planning-public",
   "planning-admin",
-  "bike-counter"
+  "bike-counter",
+  "invitation-guests"
 ];
 
 const serviceMetaByKey: Record<AppService, ServiceMeta> = {
@@ -31,6 +32,12 @@ const serviceMetaByKey: Record<AppService, ServiceMeta> = {
     description: "Consulter les statistiques du compteur velo securisees par un mot de passe dedie.",
     screenLabel: "Statistiques",
     title: "Counter"
+  },
+  "invitation-guests": {
+    applicationName: "Dervenn Invitations",
+    description: "Gerer les invites et preparer les messages d'invitation depuis les profils enregistres.",
+    screenLabel: "Invites",
+    title: "Invitations"
   }
 };
 
@@ -47,5 +54,9 @@ export function getServicePath(service: AppService): string {
     return "/planning-admin";
   }
 
-  return "/bike";
+  if (service === "bike-counter") {
+    return "/bike";
+  }
+
+  return "/invites";
 }

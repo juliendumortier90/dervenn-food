@@ -1,12 +1,14 @@
 declare module "@mui/material" {
   export const Alert: any;
   export const AppBar: any;
+  export const Avatar: any;
   export const Box: any;
   export const Button: any;
   export const Card: any;
   export const CardContent: any;
   export const Chip: any;
   export const Container: any;
+  export const CircularProgress: any;
   export const CssBaseline: any;
   export const Dialog: any;
   export const DialogActions: any;

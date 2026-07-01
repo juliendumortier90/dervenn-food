@@ -72,6 +72,10 @@ function expectedPasswordForPath(path: string): string | null {
     return expectedAdminPassword ?? null;
   }
 
+  if (path.startsWith("/invites")) {
+    return expectedAdminPassword ?? null;
+  }
+
   if (path.startsWith("/planning")) {
     return expectedPublicPassword ?? null;
   }
