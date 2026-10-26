@@ -9,13 +9,15 @@ import {
   listBikeCounterEntries,
   recordBikeCounterEntries,
   recalculateBikeCounterStats,
-  resetBikeSessionStats
+  resetBikeSessionStats,
+  setBikeSessionCount
 } from "../services/bikeRepository";
 
 const HISTORY_RANGES: BikeHistoryRange[] = ["10years", "5years", "2years", "year", "6months", "month"];
 const MAX_ADMIN_CREATE_COUNT = 1000;
 const MAX_ADMIN_DELETE_COUNT = 1000;
 const MAX_ADMIN_LIST_LIMIT = 500;
+const MAX_SESSION_COUNT = 1000000;
 
 function parseRequestedCount(body: string | null): number | null {
   if (!body) {
@@ -187,6 +189,20 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     if (event.httpMethod === "POST" && (event.resource === "/bike/resetsession" || event.path.endsWith("/bike/resetsession"))) {
       const stats = await resetBikeSessionStats();
+      return jsonResponse(200, { stats });
+    }
+
+    if (event.httpMethod === "POST" && (event.resource === "/bike/session" || event.path.endsWith("/bike/session"))) {
+      const body = parseAdminEventsBody(event.body ?? null);
+      const sessionCount = body?.sessionCount;
+
+      if (!Number.isInteger(sessionCount) || (sessionCount as number) < 0 || (sessionCount as number) > MAX_SESSION_COUNT) {
+        return jsonResponse(400, {
+          message: `A session count between 0 and ${MAX_SESSION_COUNT} is required`
+        });
+      }
+
+      const stats = await setBikeSessionCount(sessionCount as number);
       return jsonResponse(200, { stats });
     }
 

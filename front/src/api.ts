@@ -90,6 +90,14 @@ export async function recalculateBikeCounterStats(): Promise<BikeCounterStats> {
   return data.stats;
 }
 
+export async function setBikeSessionCount(sessionCount: number): Promise<BikeCounterStats> {
+  const data = await apiFetch<{ stats: BikeCounterStats }>("/bike/session", {
+    method: "POST",
+    body: JSON.stringify({ sessionCount })
+  });
+  return data.stats;
+}
+
 export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<BikeCounterHistory> {
   const data = await apiFetch<{ history: BikeCounterHistory }>(`/bike/history?range=${encodeURIComponent(range)}`);
   return data.history;

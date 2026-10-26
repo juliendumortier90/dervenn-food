@@ -21,6 +21,7 @@ import {
   hasCredentials,
   loadRuntimeConfig,
   recalculateBikeCounterStats,
+  setBikeSessionCount,
   saveCredentials
 } from "./api";
 import { BikeCounterScreen } from "./screens/BikeCounterScreen";
@@ -42,6 +43,7 @@ function useBikeStatsPolling(
   replaceStats: (value: BikeCounterStats) => void;
   selectedRange: BikeHistoryRange;
   setSelectedRange: (value: BikeHistoryRange) => void;
+  setSessionCount: (value: number) => Promise<void>;
   stats: BikeCounterStats;
 } {
   const [stats, setStats] = useState<BikeCounterStats>({ totalCount: 0, sessionCount: 0 });
@@ -155,6 +157,23 @@ function useBikeStatsPolling(
     };
   }, [enabled, historyEnabled, reloadHistory]);
 
+  async function setSessionCount(value: number): Promise<void> {
+    if (!enabled) {
+      return;
+    }
+
+    try {
+      replaceStats(await setBikeSessionCount(value));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      setStatsError(message);
+      if (message === "Authentification invalide") {
+        handleAuthenticationInvalid();
+      }
+      throw err;
+    }
+  }
+
   return {
     error: [statsError, historyEnabled ? historyError : ""].filter(Boolean).join(" • "),
     history,
@@ -165,6 +184,7 @@ function useBikeStatsPolling(
     replaceStats,
     selectedRange,
     setSelectedRange,
+    setSessionCount,
     stats
   };
 }
@@ -326,6 +346,7 @@ export function App() {
                 error={bikePolling.error}
                 isRecalculating={bikePolling.isStatsRecalculating}
                 onRecalculate={bikePolling.recalculateStats}
+                onSetSessionCount={bikePolling.setSessionCount}
                 stats={bikePolling.stats}
               />
             }

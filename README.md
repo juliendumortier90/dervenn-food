@@ -62,6 +62,7 @@ Routes:
 - `GET /bike/events?from=...&to=...&limit=...`: liste des passages sur une periode
 - `POST /bike/events`: cree (`create`) ou supprime (`delete`) des passages
 - `POST /bike/resetsession`: remet a zero le compteur de session
+- `POST /bike/session`: fixe la valeur du compteur de session (`{"sessionCount": n}`), sans toucher au total
 
 ## Authentification
 

@@ -131,6 +131,12 @@ export class DervennFoodStack extends Stack {
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });
 
+    const bikeSessionResource = bikeResource.addResource("session");
+    bikeSessionResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM
+    });
+
     const bikeResetSessionResource = bikeResource.addResource("resetsession");
     bikeResetSessionResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
       authorizer,

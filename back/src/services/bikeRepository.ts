@@ -417,6 +417,28 @@ export async function getBikeCounterHistory(range: BikeHistoryRange): Promise<Bi
   };
 }
 
+export async function setBikeSessionCount(sessionCount: number): Promise<BikeCounterStats> {
+  const updatedAt = new Date().toISOString();
+
+  const response = await documentClient.send(
+    new UpdateCommand({
+      TableName: statsTableName,
+      Key: { id: STATS_DOCUMENT_ID },
+      UpdateExpression: "SET updatedAt = :updatedAt, #session = :sessionCount",
+      ExpressionAttributeNames: {
+        "#session": "session"
+      },
+      ExpressionAttributeValues: {
+        ":updatedAt": updatedAt,
+        ":sessionCount": sessionCount
+      },
+      ReturnValues: "ALL_NEW"
+    })
+  );
+
+  return mapStatsDocumentToStats(response.Attributes as Partial<BikeCounterStatsDocument> | undefined);
+}
+
 export async function resetBikeSessionStats(): Promise<BikeCounterStats> {
   const updatedAt = new Date().toISOString();
 

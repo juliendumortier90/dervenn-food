@@ -1,14 +1,17 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import PedalBikeRoundedIcon from "@mui/icons-material/PedalBikeRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
-import { Alert, Box, Button, Card, CardContent, Stack, Typography } from "@mui/material";
+import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
+import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from "@mui/material";
 import { BikeCounterStats } from "../types";
 
 interface BikeCounterScreenProps {
   error: string;
   isRecalculating: boolean;
   onRecalculate: () => Promise<void>;
+  onSetSessionCount: (value: number) => Promise<void>;
   stats: BikeCounterStats;
 }
 
@@ -82,7 +85,39 @@ function CounterCard({
   );
 }
 
-export function BikeCounterScreen({ error, isRecalculating, onRecalculate, stats }: BikeCounterScreenProps) {
+export function BikeCounterScreen({
+  error,
+  isRecalculating,
+  onRecalculate,
+  onSetSessionCount,
+  stats
+}: BikeCounterScreenProps) {
+  const [sessionInput, setSessionInput] = useState(String(stats.sessionCount));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    setSessionInput(String(stats.sessionCount));
+  }, [stats.sessionCount]);
+
+  async function saveSessionCount(): Promise<void> {
+    const value = Number(sessionInput);
+    if (!Number.isInteger(value) || value < 0) {
+      setSaveError("Entrez un nombre entier positif ou nul.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError("");
+    try {
+      await onSetSessionCount(value);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Box
       sx={{
@@ -128,6 +163,46 @@ export function BikeCounterScreen({ error, isRecalculating, onRecalculate, stats
             value={stats.sessionCount}
           />
         </Box>
+        <Card>
+          <CardContent sx={{ p: { xs: 3, md: 4 } }}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={3}
+              alignItems={{ xs: "stretch", md: "center" }}
+              justifyContent="space-between"
+            >
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  Modifier la session
+                </Typography>
+                <Typography sx={{ opacity: 0.82 }}>
+                  Ajuste uniquement la valeur affichee pour la session courante.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
+                <TextField
+                  label="Passages session"
+                  onChange={(event: { target: { value: string } }) => setSessionInput(event.target.value)}
+                  slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
+                  type="number"
+                  value={sessionInput}
+                  error={Boolean(saveError)}
+                  helperText={saveError || undefined}
+                />
+                <Button
+                  disabled={isSaving}
+                  onClick={() => {
+                    void saveSessionCount();
+                  }}
+                  startIcon={<SaveRoundedIcon />}
+                  variant="contained"
+                >
+                  {isSaving ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
       </Stack>
     </Box>
   );
