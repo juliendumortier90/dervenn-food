@@ -1,17 +1,16 @@
-# Dervenn
+# Dervenn Counter
 
-Application simple pour plusieurs services Dervenn:
-
-- `Dervenn Planning / Planning benevoles`: consultation du planning benevoles en lecture seule
-- `Dervenn Planning / Planning benevoles admin`: creation des editions, benevoles, categories et affectations
-- `Dervenn Bike / Counter`: consultation des statistiques du compteur velo
-- `Dervenn Invitations / Invitations`: consultation des invites enregistres
+Application du compteur velo Dervenn (`Dervenn Bike / Counter`): consultation des statistiques et de
+l'analyse detaillee des passages enregistres par le compteur Arduino.
 
 ## Structure
 
-- `front`: webapp React + Material UI
-- `back`: lambdas TypeScript, authorizer et services DynamoDB
+- `front`: webapp React + Material UI (connexion, statistiques, analyse detaillee)
+- `back`: lambdas TypeScript (compteur bike, authorizer basic auth) et service DynamoDB
 - `iac`: infrastructure AWS CDK
+- `dervenn-counter-arduino`: code et documentation du compteur Arduino
+- `bruno`: collection Bruno pour tester l'API
+- `scripts`: utilitaires (ex: `create_bike_events.py` pour injecter des passages)
 
 ## Demarrage local
 
@@ -37,13 +36,8 @@ npm run build
 Lancer le front en local:
 
 ```bash
+cp front/.env.example front/.env
 npm run dev -w front
-```
-
-Fichier d'exemple front:
-
-```bash
-copy front\\.env.example front\\.env
 ```
 
 ## Collection Bruno
@@ -51,7 +45,7 @@ copy front\\.env.example front\\.env
 Une collection Bruno est disponible dans `bruno/`.
 
 1. Copier `bruno/.env.example` vers `bruno/.env`
-2. Renseigner `DERVENN_API_URL`, `DERVENN_BASIC_AUTH_USERNAME`, `DERVENN_PUBLIC_BASIC_AUTH_PASSWORD` et `DERVENN_ADMIN_BASIC_AUTH_PASSWORD`
+2. Renseigner `DERVENN_API_URL`, `DERVENN_BASIC_AUTH_USERNAME` et `DERVENN_BASIC_AUTH_PASSWORD`
 3. Ouvrir le dossier `bruno/` dans Bruno
 4. Selectionner l'environnement `dervennenv`
 
@@ -59,107 +53,51 @@ Variables utiles:
 
 - `bike_count`: nombre de passages a ajouter dans les requetes bike
 
-Routes utiles:
+Routes:
 
-- `GET /planning/editions`: liste les editions planning disponibles en lecture seule
-- `GET /planning/editions/{editionId}`: retourne une edition planning avec benevoles, categories et affectations peuplees
-- `POST /planning/admin/editions`: cree une edition et ses categories par defaut
-- `POST /planning/admin/editions/{editionId}`: cree ou met a jour les entites planning selon l'action demandee
-- `POST /bike/counter`: ajoute un passage dans la table `dervenn-bike`
-- `GET /bike/stats`: retourne le nombre total de passages en base
+- `POST /bike/counter`: ajoute des passages (utilise par le compteur Arduino)
+- `GET /bike/stats`: retourne le nombre total de passages et le compteur de session
 - `POST /bike/stats`: recalcule le total depuis les evenements bike
-- `GET /invites`: liste les utilisateurs ou les invitations d'une edition avec pagination `limit` et `nextToken`, et filtre `invitationFilter=all|invited|not_invited`
-- `POST /invites`: cree, supprime ou met a jour une invitation d'edition (`invite`, `uninvite`, `update-status`)
-
-## Import des invites Instagram
-
-Placer l'export JSON Instagram dans un dossier local non versionne, par exemple:
-
-```bash
-mkdir -p data
-cp ~/Downloads/instagram_followers_light.json data/instagram_followers_light.json
-```
-
-Puis lancer l'import vers DynamoDB:
-
-```bash
-python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --profile <aws-profile>
-```
-
-Le script lit un tableau d'utilisateurs au format Instagram `profile_pic_url`, `username`, `full_name`.
-Il retire les emojis de `username` et `full_name`, telecharge la photo, la convertit en base64 puis ecrit dans
-`dervenn-invitation-guests` les champs `username`, `fullName` et `profilePictureBase64`.
-
-Pour initialiser aussi les status par defaut pour une edition planning:
-
-```bash
-python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --edition-id <editionId> --profile <aws-profile>
-```
-
-Cette option cree dans `dervenn-invitation-statuses` les documents `username#editionId` avec
-`contactStatus=non_contacte` et `attendanceStatus=pas_repondu`, sans ecraser les status deja existants.
-
-Pour tester sans ecrire en base:
-
-```bash
-python3 scripts/import_instagram_guests.py data/instagram_followers_light.json --dry-run
-```
+- `GET /bike/history?range=...`: historique agrege des passages
+- `GET /bike/events?from=...&to=...&limit=...`: liste des passages sur une periode
+- `POST /bike/events`: cree (`create`) ou supprime (`delete`) des passages
+- `POST /bike/resetsession`: remet a zero le compteur de session
 
 ## Authentification
 
-Le meme authorizer est reutilise pour tous les services:
+Toutes les routes `/bike/*` sont protegees par un authorizer Lambda basic auth:
 
-- identifiant commun: `DERVENN_BASIC_AUTH_USERNAME`
-- mot de passe public: `DERVENN_PUBLIC_BASIC_AUTH_PASSWORD`
-- mot de passe admin: `DERVENN_ADMIN_BASIC_AUTH_PASSWORD`
+- identifiant: `DERVENN_BASIC_AUTH_USERNAME`
+- mot de passe: `DERVENN_BASIC_AUTH_PASSWORD`
 
-```bash
-DERVENN_BASIC_AUTH_USERNAME=dervenn \
-DERVENN_PUBLIC_BASIC_AUTH_PASSWORD=xxx \
-DERVENN_ADMIN_BASIC_AUTH_PASSWORD=yyy \
-npm run deploy
-```
+Variables optionnelles:
 
-Variable optionnelle:
-
-- `DERVENN_ALLOWED_ORIGIN`
+- `DERVENN_ALLOWED_ORIGIN` (defaut: `https://counter.dervenn-trail.org`)
+- `DERVENN_FRONT_DOMAIN` et `DERVENN_FRONT_CERTIFICATE_ARN`
 
 ## Deploiement
-
-1. Builder le back et le front
-2. Bootstrap CDK si besoin
-3. Deployer le stack
 
 ```bash
 npm run build
 cd iac
-npx cdk bootstrap
+npx cdk bootstrap   # si besoin
+DERVENN_BASIC_AUTH_USERNAME=food \
+DERVENN_BASIC_AUTH_PASSWORD=xxx \
 npx cdk deploy
 ```
 
 Equivalent depuis la racine apres bootstrap:
 
 ```bash
-npm run deploy
+DERVENN_BASIC_AUTH_USERNAME=food DERVENN_BASIC_AUTH_PASSWORD=xxx npm run deploy
 ```
 
-Le stack publie aussi un fichier `runtime-config.json` dans le bucket du front, ce qui permet au front deploye de connaitre automatiquement l'URL de l'API.
+Le stack publie aussi un fichier `runtime-config.json` dans le bucket du front, ce qui permet au front deploye de
+connaitre automatiquement l'URL de l'API.
 
 ## Notes de fonctionnement
 
-- Le front ouvre d'abord une page de choix du service, puis un ecran de connexion contextuel
-- L'API bike passe par une lambda dediee et le planning par une lambda `planning`
-- Les tables DynamoDB bike s'appellent `dervenn-bike-events` et `dervenn-bike-stats`
-- La table DynamoDB planning s'appelle `dervenn-planning`
-- La table DynamoDB invitations s'appelle `dervenn-invitation-guests` et utilise `username` comme cle primaire
-- La table DynamoDB des status d'invitation s'appelle `dervenn-invitation-statuses`
-  - cle primaire: `invitationId`, au format `username#editionId`
-  - index `editionId-index`: permet de lister les status d'une edition planning
-  - status contact: `non_contacte`, `premier_contact`, `contacte`
-  - status presence: `pas_repondu`, `pas_encore_sur`, `present`, `absent`
-- L'ecran Invitations contient une vue utilisateurs globale pour inviter a une edition, puis une vue edition pour desinviter et gerer les status
-- L'API est protegee par un authorizer Lambda qui valide l'en-tete `Authorization` selon le service appele
-- Le front est servi par S3 + CloudFront
-
-
-https://d22tdkynjt4wr9.cloudfront.net/
+- Le front ouvre directement l'ecran de connexion du compteur, puis les statistiques (`/bike`) et l'analyse (`/bike/analyse`)
+- L'API bike passe par une lambda dediee
+- Les tables DynamoDB s'appellent `dervenn-bike-events` et `dervenn-bike-stats`
+- Le front est servi par S3 + CloudFront: https://counter.dervenn-trail.org

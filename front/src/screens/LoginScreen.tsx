@@ -1,21 +1,16 @@
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
+import PedalBikeRoundedIcon from "@mui/icons-material/PedalBikeRounded";
 import type { ChangeEvent, FormEvent } from "react";
 import { Alert, Box, Button, Card, Stack, TextField, Typography } from "@mui/material";
-import { AppService } from "../types";
-import { getServiceMeta } from "../services";
 
 interface LoginScreenProps {
   apiConfigured: boolean;
   configReady: boolean;
   error: string;
-  onBack: () => void;
   onPasswordChange: (value: string) => void;
   onSubmit: () => void;
   onUsernameChange: (value: string) => void;
   password: string;
-  selectedService: AppService;
   username: string;
 }
 
@@ -23,15 +18,12 @@ export function LoginScreen({
   apiConfigured,
   configReady,
   error,
-  onBack,
   onPasswordChange,
   onSubmit,
   onUsernameChange,
   password,
-  selectedService,
   username
 }: LoginScreenProps) {
-  const serviceMeta = getServiceMeta(selectedService);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -77,24 +69,12 @@ export function LoginScreen({
               border: "1px solid rgba(158, 176, 214, 0.12)"
             }}
           >
-            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
-              <Box>
-                <Typography variant="overline" sx={{ letterSpacing: "0.2em", color: "primary.main" }}>
-                  Etape 2/2
-                </Typography>
-                <Typography variant="h4">Connexion</Typography>
-              </Box>
-              <Button
-                type="button"
-                variant="outlined"
-                color="inherit"
-                onClick={onBack}
-                startIcon={<ArrowBackRoundedIcon />}
-                sx={{ flexShrink: 0 }}
-              >
-                Services
-              </Button>
-            </Stack>
+            <Box>
+              <Typography variant="overline" sx={{ letterSpacing: "0.2em", color: "primary.main" }}>
+                Dervenn Bike
+              </Typography>
+              <Typography variant="h4">Connexion</Typography>
+            </Box>
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Box
                 sx={{
@@ -108,11 +88,13 @@ export function LoginScreen({
                   border: "1px solid rgba(244,138,31,0.2)"
                 }}
               >
-                <AppsRoundedIcon />
+                <PedalBikeRoundedIcon />
               </Box>
               <Stack spacing={0.25}>
-                <Typography variant="h6">{serviceMeta.title}</Typography>
-                <Typography color="text.secondary">{serviceMeta.description}</Typography>
+                <Typography variant="h6">Counter</Typography>
+                <Typography color="text.secondary">
+                  Consulter les statistiques du compteur velo securisees par un mot de passe dedie.
+                </Typography>
               </Stack>
             </Stack>
           </Stack>
@@ -143,7 +125,7 @@ export function LoginScreen({
               </Box>
               <Box>
                 <Typography variant="h5">Connexion</Typography>
-                <Typography color="text.secondary">Utiliser les identifiants du service choisi</Typography>
+                <Typography color="text.secondary">Utiliser les identifiants du compteur</Typography>
               </Box>
             </Stack>
             <TextField

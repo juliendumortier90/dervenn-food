@@ -5,13 +5,10 @@ import {
 } from "aws-lambda";
 
 const expectedUsername = process.env.BASIC_AUTH_USERNAME;
-const expectedPublicPassword = process.env.PUBLIC_BASIC_AUTH_PASSWORD;
-const expectedAdminPassword = process.env.ADMIN_BASIC_AUTH_PASSWORD;
+const expectedPassword = process.env.BASIC_AUTH_PASSWORD;
 
-if (!expectedUsername || !expectedPublicPassword || !expectedAdminPassword) {
-  throw new Error(
-    "Missing BASIC_AUTH_USERNAME, PUBLIC_BASIC_AUTH_PASSWORD or ADMIN_BASIC_AUTH_PASSWORD"
-  );
+if (!expectedUsername || !expectedPassword) {
+  throw new Error("Missing BASIC_AUTH_USERNAME or BASIC_AUTH_PASSWORD");
 }
 
 function generatePolicy(principalId: string, effect: "Allow" | "Deny", resource: string): APIGatewayAuthorizerResult {
@@ -63,35 +60,18 @@ function extractPath(event: APIGatewayRequestAuthorizerEvent): string {
   return resourcePath ? `/${resourcePath}` : "/";
 }
 
-function expectedPasswordForPath(path: string): string | null {
-  if (path.startsWith("/planning/admin")) {
-    return expectedAdminPassword ?? null;
-  }
-
-  if (path.startsWith("/bike")) {
-    return expectedAdminPassword ?? null;
-  }
-
-  if (path.startsWith("/invites")) {
-    return expectedAdminPassword ?? null;
-  }
-
-  if (path.startsWith("/planning")) {
-    return expectedPublicPassword ?? null;
-  }
-
-  return null;
+function isProtectedPath(path: string): boolean {
+  return path === "/bike" || path.startsWith("/bike/");
 }
 
 export const handler: APIGatewayRequestAuthorizerHandler = async (
   event: APIGatewayRequestAuthorizerEvent
 ) => {
   const credentials = decodeAuthorizationHeader(event.headers?.Authorization ?? event.headers?.authorization);
-  const expectedPassword = expectedPasswordForPath(extractPath(event));
 
   if (
     credentials &&
-    expectedPassword &&
+    isProtectedPath(extractPath(event)) &&
     credentials.username === expectedUsername &&
     credentials.password === expectedPassword
   ) {

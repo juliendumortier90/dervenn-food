@@ -22,16 +22,13 @@ export class DervennFoodStack extends Stack {
     super(scope, id, props);
 
     const basicAuthUsername = process.env.DERVENN_BASIC_AUTH_USERNAME;
-    const publicBasicAuthPassword = process.env.DERVENN_PUBLIC_BASIC_AUTH_PASSWORD;
-    const adminBasicAuthPassword = process.env.DERVENN_ADMIN_BASIC_AUTH_PASSWORD;
+    const basicAuthPassword = process.env.DERVENN_BASIC_AUTH_PASSWORD;
     const allowedOrigin = process.env.DERVENN_ALLOWED_ORIGIN ?? defaultAllowedOrigin;
     const frontDomainName = process.env.DERVENN_FRONT_DOMAIN ?? defaultFrontDomainName;
     const frontCertificateArn = process.env.DERVENN_FRONT_CERTIFICATE_ARN ?? defaultFrontCertificateArn;
 
-    if (!basicAuthUsername || !publicBasicAuthPassword || !adminBasicAuthPassword) {
-      throw new Error(
-        "DERVENN_BASIC_AUTH_USERNAME, DERVENN_PUBLIC_BASIC_AUTH_PASSWORD and DERVENN_ADMIN_BASIC_AUTH_PASSWORD are required"
-      );
+    if (!basicAuthUsername || !basicAuthPassword) {
+      throw new Error("DERVENN_BASIC_AUTH_USERNAME and DERVENN_BASIC_AUTH_PASSWORD are required");
     }
 
     if (frontDomainName && !frontCertificateArn) {
@@ -52,47 +49,9 @@ export class DervennFoodStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY
     });
 
-    const planningTable = new dynamodb.Table(this, "DervennPlanningTable", {
-      tableName: "dervenn-planning",
-      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.DESTROY
-    });
-
-    const invitationGuestsTable = new dynamodb.Table(this, "DervennInvitationGuestsTable", {
-      tableName: "dervenn-invitation-guests",
-      partitionKey: { name: "username", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.DESTROY
-    });
-
-    const invitationStatusesTable = new dynamodb.Table(this, "DervennInvitationStatusesTable", {
-      tableName: "dervenn-invitation-statuses",
-      partitionKey: { name: "invitationId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.DESTROY
-    });
-    invitationStatusesTable.addGlobalSecondaryIndex({
-      indexName: "editionId-index",
-      partitionKey: { name: "editionId", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "username", type: dynamodb.AttributeType.STRING }
-    });
-
     const bikeLambdaEnvironment = {
       BIKE_EVENTS_TABLE_NAME: bikeEventsTable.tableName,
       BIKE_STATS_TABLE_NAME: bikeStatsTable.tableName,
-      ALLOWED_ORIGIN: allowedOrigin
-    };
-
-    const planningLambdaEnvironment = {
-      PLANNING_TABLE_NAME: planningTable.tableName,
-      ALLOWED_ORIGIN: allowedOrigin
-    };
-
-    const invitationLambdaEnvironment = {
-      INVITATION_GUESTS_TABLE_NAME: invitationGuestsTable.tableName,
-      INVITATION_STATUSES_TABLE_NAME: invitationStatusesTable.tableName,
       ALLOWED_ORIGIN: allowedOrigin
     };
 
@@ -112,33 +71,17 @@ export class DervennFoodStack extends Stack {
       environment: bikeLambdaEnvironment
     });
 
-    const planningFunction = new lambdaNodejs.NodejsFunction(this, "PlanningFunction", {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, "../../back/src/handlers/planning.ts"),
-      environment: planningLambdaEnvironment
-    });
-
-    const invitationFunction = new lambdaNodejs.NodejsFunction(this, "InvitationFunction", {
-      ...lambdaDefaults,
-      entry: path.join(__dirname, "../../back/src/handlers/invitation.ts"),
-      environment: invitationLambdaEnvironment
-    });
-
     const basicAuthAuthorizer = new lambdaNodejs.NodejsFunction(this, "BasicAuthAuthorizerFunction", {
       ...lambdaDefaults,
       entry: path.join(__dirname, "../../back/src/handlers/basicAuthAuthorizer.ts"),
       environment: {
         BASIC_AUTH_USERNAME: basicAuthUsername,
-        PUBLIC_BASIC_AUTH_PASSWORD: publicBasicAuthPassword,
-        ADMIN_BASIC_AUTH_PASSWORD: adminBasicAuthPassword
+        BASIC_AUTH_PASSWORD: basicAuthPassword
       }
     });
 
     bikeEventsTable.grantReadWriteData(bikeCounterFunction);
     bikeStatsTable.grantReadWriteData(bikeCounterFunction);
-    planningTable.grantReadWriteData(planningFunction);
-    invitationGuestsTable.grantReadData(invitationFunction);
-    invitationStatusesTable.grantReadWriteData(invitationFunction);
 
     const api = new apigateway.RestApi(this, "DervennApi", {
       restApiName: "Dervenn API",
@@ -190,50 +133,6 @@ export class DervennFoodStack extends Stack {
 
     const bikeResetSessionResource = bikeResource.addResource("resetsession");
     bikeResetSessionResource.addMethod("POST", new apigateway.LambdaIntegration(bikeCounterFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const planningResource = api.root.addResource("planning");
-    const planningEditionsResource = planningResource.addResource("editions");
-    planningEditionsResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const planningEditionItemResource = planningEditionsResource.addResource("{editionId}");
-    planningEditionItemResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const planningAdminResource = planningResource.addResource("admin");
-    const planningAdminEditionsResource = planningAdminResource.addResource("editions");
-    planningAdminEditionsResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-    planningAdminEditionsResource.addMethod("POST", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const planningAdminEditionItemResource = planningAdminEditionsResource.addResource("{editionId}");
-    planningAdminEditionItemResource.addMethod("GET", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-    planningAdminEditionItemResource.addMethod("POST", new apigateway.LambdaIntegration(planningFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-
-    const invitesResource = api.root.addResource("invites");
-    invitesResource.addMethod("GET", new apigateway.LambdaIntegration(invitationFunction), {
-      authorizer,
-      authorizationType: apigateway.AuthorizationType.CUSTOM
-    });
-    invitesResource.addMethod("POST", new apigateway.LambdaIntegration(invitationFunction), {
       authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM
     });

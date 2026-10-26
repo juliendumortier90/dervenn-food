@@ -9,3 +9,4 @@ coverage/
 front/dist/
 back/dist/
 iac/dist/
+__pycache__/
